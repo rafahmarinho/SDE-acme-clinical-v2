@@ -66,4 +66,4 @@ async def test_no_user_enumeration():
 - [ ] Manual check of deployed API documented with no leaks.
 - [ ] Frontend vitest asserts the error component shows only catalogue text and error ID.
 
-**Status:** Pending
+**Status:** Applied

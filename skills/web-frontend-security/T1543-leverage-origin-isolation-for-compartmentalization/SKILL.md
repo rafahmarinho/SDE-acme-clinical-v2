@@ -55,4 +55,4 @@ export function IsolatedViz({ beds }: { beds: { id: string; status: string }[] }
 - [ ] No third-party 3D/embed code runs in the SPA origin; any such code is in a sandboxed cross-origin iframe.
 - [ ] Uploaded files are never served from the SPA origin.
 
-**Status:** Pending
+**Status:** Applied

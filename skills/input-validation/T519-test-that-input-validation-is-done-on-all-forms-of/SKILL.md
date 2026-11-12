@@ -55,4 +55,4 @@ async def test_param_rejected(client, admin_headers, method, path, name, where, 
 - [ ] An input inventory exists and each entry has documented acceptance criteria.
 - [ ] Schema-driven tests cover 100% of OpenAPI parameters and request models; none returns 500 or accepts invalid data.
 
-**Status:** Pending
+**Status:** Applied

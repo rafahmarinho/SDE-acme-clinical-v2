@@ -45,4 +45,4 @@ def set_refresh_cookie_narrow(resp: Response, token: str) -> None:
 - [ ] Session/refresh cookie uses `__Host-` (Path=/) or `__Secure-` with a path no broader than `/api/auth`.
 - [ ] Verified by T405 tests.
 
-**Status:** Pending
+**Status:** Applied

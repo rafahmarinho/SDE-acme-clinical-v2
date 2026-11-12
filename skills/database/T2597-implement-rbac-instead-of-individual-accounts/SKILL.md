@@ -64,4 +64,4 @@ create policy thresholds_update on clinical.alarm_thresholds for update to authe
 - [ ] RLS policies reference only `has_permission()`/scope helpers.
 - [ ] Staff with `role is null` can read nothing.
 
-**Status:** Pending
+**Status:** Applied

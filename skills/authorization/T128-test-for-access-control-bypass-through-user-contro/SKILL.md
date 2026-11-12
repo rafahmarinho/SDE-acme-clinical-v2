@@ -61,4 +61,4 @@ async def test_list_filter_tampering(client_as, nurse_ward_a, ward_b_ids):
 - [ ] Mass-assignment attempts yield 422 or are ignored, never stored.
 - [ ] Manual proxy session confirms the same on a Vercel preview.
 
-**Status:** Pending
+**Status:** Applied

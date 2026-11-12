@@ -60,4 +60,4 @@ for r in app.routes:
 - [ ] Nurse, physician and biomedical technician get 403 on `POST /simulation/reset` and `PATCH /staff/{id}/role`.
 - [ ] All `POST/PUT/PATCH/DELETE` routes carry an explicit `require(...)`.
 
-**Status:** Pending
+**Status:** Applied

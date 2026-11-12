@@ -55,4 +55,4 @@ alter table public.observations
 - [ ] Audit columns on clinical tables are `NOT NULL` and filled from `auth.uid()`. A SQL test inserts with a spoofed actor ID and checks that it is rejected or overwritten.
 - [ ] No seed or fixture creates a role-named shared account.
 
-**Status:** Pending
+**Status:** Applied

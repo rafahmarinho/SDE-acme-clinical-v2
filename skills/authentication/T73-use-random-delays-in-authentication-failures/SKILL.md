@@ -57,4 +57,4 @@ async def change_password(...):
 - [ ] For each wrapped endpoint, the mean latency difference between failure modes (unknown user, wrong password, success) is under the jitter range over 50 samples.
 - [ ] `backend/tests/test_auth_timing.py` checks that a failing call takes at least `FLOOR_S` and that delays vary between calls.
 
-**Status:** Pending
+**Status:** Applied

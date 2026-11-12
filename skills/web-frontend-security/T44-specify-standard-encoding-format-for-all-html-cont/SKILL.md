@@ -53,4 +53,4 @@ def csv_response(body: str, filename: str) -> Response:
 - [ ] All HTML and text responses from both deployments declare UTF-8, and no page declares a different charset.
 - [ ] Verified by T132 tests.
 
-**Status:** Pending
+**Status:** Applied

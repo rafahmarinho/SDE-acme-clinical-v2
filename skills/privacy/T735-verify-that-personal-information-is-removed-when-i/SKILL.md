@@ -56,4 +56,4 @@ async def test_expired_records_are_purged(db, storage, seed_factory):
 - [ ] Retention schedule and backup expiry window are documented and linked from README.
 - [ ] `purge_log` contains an entry per run with counts only.
 
-**Status:** Pending
+**Status:** Applied

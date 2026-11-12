@@ -61,4 +61,4 @@ export function listenToViz(frame: HTMLIFrameElement, onMsg: (m: VizMessage) => 
 - [ ] Origin check uses strict equality and payloads are schema-validated.
 - [ ] Verified by T319 unit tests.
 
-**Status:** Pending
+**Status:** Applied

@@ -58,4 +58,4 @@ export function ObservationItem({ author, text, createdAt }: Props) {
 - [ ] `grep -r "dangerouslySetInnerHTML\|innerHTML\|new Function" frontend/src` returns no matches on user data paths.
 - [ ] Vitest: rendering an observation `{{constructor.constructor('alert(1)')()}}` or `<img src=x onerror=alert(1)>` shows the literal text.
 
-**Status:** Pending
+**Status:** Applied

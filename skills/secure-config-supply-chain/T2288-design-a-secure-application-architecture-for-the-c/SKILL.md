@@ -45,4 +45,4 @@ The PRD already separates frontend and API deployments, but a common shortcut is
 - [ ] Service role key exists only in backend Vercel env.
 - [ ] Function region matches the Supabase region.
 
-**Status:** Pending
+**Status:** Applied

@@ -61,4 +61,4 @@ grant execute on function simulation.reset_demo_data(uuid) to acme_api_rw;  -- A
 - [ ] `acme_simulator` cannot read `clinical.observations` or modify thresholds (pgTAP).
 - [ ] Reset works only through `simulation.reset_demo_data` and writes an audit row.
 
-**Status:** Pending
+**Status:** Applied

@@ -53,4 +53,4 @@ export function openSafely(url: string): void {
 - [ ] All `window.open` calls go through `openSafely`.
 - [ ] Verification test in T513 passes.
 
-**Status:** Pending
+**Status:** Applied

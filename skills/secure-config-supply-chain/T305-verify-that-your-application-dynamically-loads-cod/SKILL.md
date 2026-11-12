@@ -56,4 +56,4 @@ def get_scenario(name: str):
 - [ ] No `eval`, `new Function`, or dynamic import from variable URLs in source.
 - [ ] Backend scenario selection uses an allow-list; unknown names return 422.
 
-**Status:** Pending
+**Status:** Applied

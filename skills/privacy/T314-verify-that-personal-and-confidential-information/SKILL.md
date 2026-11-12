@@ -47,4 +47,4 @@ rollback;
 - [ ] Each PHI/PII table has RLS enabled (checked in the same pgTAP suite).
 - [ ] Storage buckets and Realtime channels are listed in the classification document.
 
-**Status:** Pending
+**Status:** Applied

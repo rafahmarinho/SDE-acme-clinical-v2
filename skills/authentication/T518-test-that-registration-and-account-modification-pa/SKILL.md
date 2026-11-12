@@ -58,4 +58,4 @@ def test_email_change_link_single_use_and_expiring(user_session, mailpit, freeze
 - [ ] The unit and integration tests above pass.
 - [ ] Public sign-up is rejected on the hosted project (manual check recorded).
 
-**Status:** Pending
+**Status:** Applied

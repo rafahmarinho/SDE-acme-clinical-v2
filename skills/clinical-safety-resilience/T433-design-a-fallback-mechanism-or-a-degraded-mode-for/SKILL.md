@@ -68,4 +68,4 @@ def degraded_guard(feature: str):
 - [ ] In degraded mode, reports/3D/staff endpoints return 503 while alarms and acknowledgement keep working.
 - [ ] Degraded/offline state is visibly indicated in the UI.
 
-**Status:** Pending
+**Status:** Applied

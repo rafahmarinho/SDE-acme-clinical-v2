@@ -54,4 +54,4 @@ async def test_bucket_not_public(anon_http):
 - [ ] Cross-ward report IDs and traversal names return 404/422.
 - [ ] Expired signed URL returns an error after the TTL.
 
-**Status:** Pending
+**Status:** Applied

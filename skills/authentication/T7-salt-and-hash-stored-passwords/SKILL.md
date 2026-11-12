@@ -57,4 +57,4 @@ revoke all on private.password_history from anon, authenticated;
 - [ ] `backend/tests/test_hashing.py` checks that two hashes of the same password differ (unique salt), start with `$argon2id$`, and verify correctly.
 - [ ] `supabase/seed.sql` contains no `crypt(`, `encrypted_password` or plaintext passwords.
 
-**Status:** Pending
+**Status:** Applied

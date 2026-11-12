@@ -55,4 +55,4 @@ async def test_admin_allows_two_factor_session(method, path):
 - [ ] RLS SQL test denies aal1 writes to admin-managed tables.
 - [ ] A manual test record shows that the admin UI cannot be reached without TOTP.
 
-**Status:** Pending
+**Status:** Applied

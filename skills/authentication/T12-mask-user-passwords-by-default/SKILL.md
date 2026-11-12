@@ -55,4 +55,4 @@ export function PasswordField({ label, value, onChange, autoComplete }: Props) {
 - [ ] Every password input renders with `type="password"` on first paint.
 - [ ] Vitest and Testing Library test `frontend/src/components/PasswordField.test.tsx` checks the default `type=password`, that the toggle switches to text, and that blur re-masks.
 
-**Status:** Pending
+**Status:** Applied

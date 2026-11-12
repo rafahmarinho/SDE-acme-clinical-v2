@@ -62,4 +62,4 @@ def configure_logging(level: str) -> None:
 - [ ] `RedactingFilter` unit test proves JWTs, e-mails and `password=` values are redacted.
 - [ ] T229 log-scan test passes.
 
-**Status:** Pending
+**Status:** Applied

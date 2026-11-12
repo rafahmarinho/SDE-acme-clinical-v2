@@ -64,4 +64,4 @@ async def test_shedding_order(client_as, force_shed_level, observation_payload):
 - [ ] Alarm priority mapping test passes for all simulated scenarios.
 - [ ] Design document reviewed and linked from README.
 
-**Status:** Pending
+**Status:** Applied

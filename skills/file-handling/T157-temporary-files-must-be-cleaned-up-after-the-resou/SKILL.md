@@ -61,4 +61,4 @@ def report_response(user_id: str, render) -> FileResponse:
 - [ ] Failed report rendering leaves no temp files.
 - [ ] Directories older than 10 minutes are removed by `sweep_expired` (unit test with patched mtime).
 
-**Status:** Pending
+**Status:** Applied

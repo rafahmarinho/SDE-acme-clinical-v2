@@ -63,4 +63,4 @@ async def test_db_down_returns_defined_error(client_as, break_db):
 - [ ] Engine exceptions and DB outages produce predefined outputs (alarm/503 code).
 - [ ] Frontend tests confirm no stale numeric vitals are shown.
 
-**Status:** Pending
+**Status:** Applied

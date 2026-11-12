@@ -52,4 +52,4 @@ async def test_bind_to_occupied_bed_rejected(client, nurse_headers):
 - [ ] `backend/tests/test_navigation_flow.py` passes.
 - [ ] Manual deep-link and reused recovery link checks fail safely.
 
-**Status:** Pending
+**Status:** Applied

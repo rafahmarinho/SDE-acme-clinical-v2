@@ -65,4 +65,4 @@ async def security_headers(request, call_next):
 - [ ] Configuration reference documents each setting.
 - [ ] T2357 tests pass.
 
-**Status:** Pending
+**Status:** Applied

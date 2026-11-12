@@ -47,4 +47,4 @@ export const PUBLIC_SCREENS = ["/login", "/forgot-password", "/reset-password"] 
 - [ ] `/health` exposes no sensitive information.
 - [ ] Public endpoints are rate-limited (test sends N+1 requests and receives 429).
 
-**Status:** Pending
+**Status:** Applied

@@ -52,4 +52,4 @@ async def test_statistics_report_is_deidentified(db, seed_demo):
 - [ ] De-identification procedure and risk assessment are documented.
 - [ ] Patient-identifying reports are restricted to clinical roles and labeled as primary use.
 
-**Status:** Pending
+**Status:** Applied

@@ -62,4 +62,4 @@ async def test_long_url_rejected(api, nurse):
 - [ ] Rejections happen before the request reaches route handlers (verified via logs).
 - [ ] `maxDuration` and DB statement timeout are configured and documented.
 
-**Status:** Pending
+**Status:** Applied

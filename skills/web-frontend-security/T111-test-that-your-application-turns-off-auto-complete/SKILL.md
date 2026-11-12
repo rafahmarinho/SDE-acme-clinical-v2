@@ -58,4 +58,4 @@ describe("confidential fields disable autocomplete", () => {
 - [ ] `pnpm test` runs the autocomplete suite and it passes.
 - [ ] Manual re-typing test on the deployed build shows no suggestions for patient search or observation fields.
 
-**Status:** Pending
+**Status:** Applied

@@ -55,4 +55,4 @@ def test_scenario_file_schema(tmp_path):
 - [ ] `backend/tests/test_json_validation.py` passes for every JSON-accepting endpoint.
 - [ ] No malicious JSON produces a 500 or a persisted record.
 
-**Status:** Pending
+**Status:** Applied

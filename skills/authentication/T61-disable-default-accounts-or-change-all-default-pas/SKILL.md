@@ -57,4 +57,4 @@ if __name__ == "__main__":
 - [ ] Each demo account must change its password at first login. The demo creation script exits in production.
 - [ ] Simulation reset leaves staff accounts and credentials unchanged (`backend/tests/test_simulation_reset.py`).
 
-**Status:** Pending
+**Status:** Applied

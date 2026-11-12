@@ -66,4 +66,4 @@ def test_double_dot_filename_handled():
 - [ ] Cross-patient Storage access denied via API and direct Storage client.
 - [ ] No 500 responses for any payload.
 
-**Status:** Pending
+**Status:** Applied

@@ -58,4 +58,4 @@ export async function confirmPassword(email: string, password: string) {
 - [ ] Password/email/role/threshold changes fail with `401 reauth_required` unless the user re-authenticated within 5 minutes.
 - [ ] Tests described in T95.
 
-**Status:** Pending
+**Status:** Applied

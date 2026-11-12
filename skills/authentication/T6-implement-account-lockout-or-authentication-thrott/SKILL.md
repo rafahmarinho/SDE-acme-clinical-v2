@@ -65,4 +65,4 @@ revoke execute on function public.hook_password_verification_attempt from authen
 - [ ] A soft-lock expiry never lifts an administrator ban (`banned_until` stays set).
 - [ ] Integration test `backend/tests/test_lockout.py` (run against local `supabase start`) covers the soft lock, its expiry and admin unlock. A CAPTCHA token is required on the login form.
 
-**Status:** Pending
+**Status:** Applied

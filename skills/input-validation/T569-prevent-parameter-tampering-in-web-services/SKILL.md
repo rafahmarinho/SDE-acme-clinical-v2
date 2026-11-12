@@ -58,4 +58,4 @@ class AckAlarm(StrictModel):
 - [ ] Enumerated fields (role, scenario, alarm state) appear as `enum` in `/openapi.json`.
 - [ ] `backend/tests/test_schema_strictness.py` asserts unknown fields and out-of-enum values return 422.
 
-**Status:** Pending
+**Status:** Applied

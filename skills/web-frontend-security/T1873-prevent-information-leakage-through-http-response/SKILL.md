@@ -56,4 +56,4 @@ app.add_middleware(StripLeakyHeadersMiddleware)
 - [ ] Production OpenAPI docs are disabled or require auth; 500 responses carry no stack trace.
 - [ ] Verified by T1874 tests.
 
-**Status:** Pending
+**Status:** Applied

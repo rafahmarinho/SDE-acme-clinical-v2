@@ -65,4 +65,4 @@ export function useStaleWatchdog(lastUpdateAt: number, timeoutMs = 10_000) {
 - [ ] Browser shows "No signal" within 10 s of the last update when the feed stalls (vitest with fake timers).
 - [ ] Resumed heartbeats return the monitor to `online` and end the condition; a simulator stall raises a watchdog event.
 
-**Status:** Pending
+**Status:** Applied

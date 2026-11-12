@@ -58,4 +58,4 @@ export const ConfidentialInput = forwardRef<HTMLInputElement, Props>(
 - [ ] The login form autocomplete decision is documented in `README`.
 - [ ] A vitest/Testing Library test renders the observation form and patient search and asserts `autocomplete="off"` (see T111).
 
-**Status:** Pending
+**Status:** Applied

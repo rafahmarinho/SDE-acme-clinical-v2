@@ -54,4 +54,4 @@ async def staff_review():
 - [ ] The pgTAP suite passes with zero duplicates, orphans or generic accounts.
 - [ ] The account review export is available to administrators only (aal2), and a signed-off review record exists for the release.
 
-**Status:** Pending
+**Status:** Applied

@@ -67,4 +67,4 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 - [ ] No API route reads auth from cookies; all state-changing routes reject non-JSON bodies with 415.
 - [ ] Verified by T96 tests.
 
-**Status:** Pending
+**Status:** Applied

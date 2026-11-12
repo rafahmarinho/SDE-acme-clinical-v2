@@ -56,4 +56,4 @@ describe.each(Object.entries(screens))('%s', (_name, Screen) => {
 - [ ] The Vitest suite passes for every password-entry screen.
 - [ ] No raw password `<input>` exists outside `PasswordField` (lint or test check).
 
-**Status:** Pending
+**Status:** Applied

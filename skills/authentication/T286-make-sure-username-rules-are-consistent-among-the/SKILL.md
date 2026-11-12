@@ -63,4 +63,4 @@ export const canonicalEmail = (raw: string) => raw.normalize('NFKC').trim().toLo
 - [ ] One rule is documented and implemented identically in `identity.py`, `identity.ts` and the DB constraint.
 - [ ] Unit tests in `backend/tests/test_identity.py` and `frontend/src/lib/identity.test.ts` cover case, whitespace, zero-width and full-width variants.
 
-**Status:** Pending
+**Status:** Applied

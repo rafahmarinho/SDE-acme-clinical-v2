@@ -67,4 +67,4 @@ async def export_my_data(body: ExportRequest, user=Depends(current_user)):
 - [ ] Export contains no data from other users or patient identities.
 - [ ] Each export is audit-logged without personal data in the log message.
 
-**Status:** Pending
+**Status:** Applied

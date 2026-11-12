@@ -66,4 +66,4 @@ async def update_me(body: ProfileUpdate, user=Depends(current_user)):
 - [ ] Email change only takes effect after confirmation.
 - [ ] T238 tests pass.
 
-**Status:** Pending
+**Status:** Applied

@@ -56,4 +56,4 @@ def content_disposition(filename: str) -> str:
 - [ ] Unit tests for `safe_header_value` reject `a\r\nSet-Cookie: x=1`, `%0d%0a`, `%250A` and `%%0A0A`.
 - [ ] Downloading a report for a patient whose name contains `\r\n` yields a single, sanitized `Content-Disposition` header and no injected headers.
 
-**Status:** Pending
+**Status:** Applied

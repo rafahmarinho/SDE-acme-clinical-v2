@@ -59,4 +59,4 @@ def evaluate(reading: Reading | None, monitor: Monitor, now: datetime) -> tuple[
 - [ ] UI never renders numeric vitals for a stale/disconnected monitor (vitest).
 - [ ] An injected exception in evaluation results in an `EVALUATION_ERROR` alarm, not silence.
 
-**Status:** Pending
+**Status:** Applied

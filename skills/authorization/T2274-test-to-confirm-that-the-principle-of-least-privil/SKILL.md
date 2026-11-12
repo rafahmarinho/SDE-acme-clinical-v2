@@ -61,4 +61,4 @@ async def test_granted_late(client_as, new_staff):
 - [ ] Revocation test passes using an unexpired token after deactivation.
 - [ ] pgTAP check of `acme_api` privileges passes.
 
-**Status:** Pending
+**Status:** Applied

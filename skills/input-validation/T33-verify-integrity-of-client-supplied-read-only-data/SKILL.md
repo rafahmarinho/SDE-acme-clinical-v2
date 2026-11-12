@@ -53,4 +53,4 @@ async def ack(alarm_id: UUID, body: AckIn, user: User = Depends(current_user), d
 - [ ] Test: posting an acknowledgement with a forged `acknowledged_by` returns 422 and the stored record shows the real user.
 - [ ] Any HMAC-protected value that is modified client-side is rejected with 400.
 
-**Status:** Pending
+**Status:** Applied

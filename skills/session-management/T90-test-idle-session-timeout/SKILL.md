@@ -55,4 +55,4 @@ it("locks after idle period and ignores realtime updates", () => {
 - [ ] UI locks at the configured time and unlock requires the password.
 - [ ] Tests run in CI with simulated time.
 
-**Status:** Pending
+**Status:** Applied

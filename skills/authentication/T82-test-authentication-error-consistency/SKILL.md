@@ -57,4 +57,4 @@ it('shows identical UI and storage for unknown vs known email', async () => {
 - [ ] The integration test passes: identical status, error code and message, and identical cookie names.
 - [ ] The Vitest UI test passes: identical alert text and no session storage after failure.
 
-**Status:** Pending
+**Status:** Applied

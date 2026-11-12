@@ -49,4 +49,4 @@ async def test_server_rejects_invalid(client, admin_headers, method, path, body)
 - [ ] `backend/tests/test_server_validation.py` covers each form-backed endpoint and passes.
 - [ ] Manual proxy run documented for limits, staff and simulation screens with all tampered values rejected.
 
-**Status:** Pending
+**Status:** Applied

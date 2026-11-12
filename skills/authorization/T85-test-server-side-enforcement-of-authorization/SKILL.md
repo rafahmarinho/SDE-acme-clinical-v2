@@ -51,4 +51,4 @@ async def test_header_tampering_ignored(client_as, nurse):
 - [ ] Direct Supabase writes from unpermitted roles affect zero rows.
 - [ ] Manual proxy test on a preview deployment recorded as passed.
 
-**Status:** Pending
+**Status:** Applied

@@ -61,4 +61,4 @@ async def admin_client():
 - [ ] A build check confirms that no `SERVICE_ROLE` string or secret key appears in `frontend/dist` or in `frontend/.env.example`.
 - [ ] `/internal/*` returns 401 without the cron secret.
 
-**Status:** Pending
+**Status:** Applied

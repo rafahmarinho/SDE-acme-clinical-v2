@@ -66,4 +66,4 @@ $$;
 - [ ] Next login after a timeout shows the "you did not sign out" reminder.
 - [ ] Tests in `backend/tests/test_logout.py` (see T93).
 
-**Status:** Pending
+**Status:** Applied

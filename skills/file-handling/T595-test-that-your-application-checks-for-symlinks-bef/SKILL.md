@@ -61,4 +61,4 @@ def test_workdir_is_private():
 - [ ] Planted link targets remain unmodified.
 - [ ] Semgrep/grep rule for raw `/tmp` opens added to CI.
 
-**Status:** Pending
+**Status:** Applied

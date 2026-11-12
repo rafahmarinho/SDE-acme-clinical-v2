@@ -57,4 +57,4 @@ rollback;
 - [ ] All four pgTAP assertions pass in CI.
 - [ ] The repository search reports no weak hashing or plaintext password storage.
 
-**Status:** Pending
+**Status:** Applied

@@ -55,4 +55,4 @@ Type Two manual probe (host on an unrelated origin):
 - [ ] Probe page shows a blocked frame (no ACME Clinical UI) in all supported browsers, including double framing.
 - [ ] vitest clickjacking config test passes.
 
-**Status:** Pending
+**Status:** Applied

@@ -61,4 +61,4 @@ async def test_client_supplied_session_id_ignored(api, nurse):
 - [ ] Client-supplied session identifiers are ignored.
 - [ ] Tests pass in CI.
 
-**Status:** Pending
+**Status:** Applied

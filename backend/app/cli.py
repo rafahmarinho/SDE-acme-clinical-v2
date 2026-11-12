@@ -1,51 +1,83 @@
-"""Operator CLI.
+"""Operator CLI (run from a trusted workstation, never from the deployed API).
 
-    python -m app.cli create-demo-staff
+    python -m app.cli create-demo-staff [email-domain] [--allow-demo]
+    python -m app.cli provision-monitor-secrets
 
-Creates one demo account per role through the Supabase Admin API with a unique, randomly
-generated password (secrets module), prints each credential ONCE to the terminal, and binds
-the 10 simulated monitors to the first 10 beds. Nothing is written to disk or git. Run it only
-against a demo project; rotate or delete the accounts afterwards.
+create-demo-staff
+    Creates one personal demo account per role (a distinct, named fictional person each - never a
+    shared or role-named login) through the Supabase Admin API. Each account gets a unique random
+    password generated with `secrets` that satisfies the password policy (app.services.passwords),
+    printed ONCE to the terminal and never written to disk or git. Refuses to run when
+    APP_ENV=production unless --allow-demo is given. Binds the 10 simulated monitors to the first beds.
+    The administrator must enrol TOTP MFA at first sign-in (the API rejects admin tokens below aal2).
+
+provision-monitor-secrets
+    Issues a new per-device secret ("pairing code") for every monitor, stores only its SHA-256 and
+    prints each code once (to be put on the device label). Old codes stop working immediately.
+
+Both commands write with ADMIN_DATABASE_URL (the migration/operator role, TLS required except for a
+local `supabase start` database); the API's own DATABASE_URL role cannot create accounts.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import secrets
-import string
 import sys
+from urllib.parse import urlsplit
 
 import httpx
 import psycopg
 
 from app.core.config import get_settings
+from app.services.device_auth import new_device_secret
+from app.services.identity import canonical_email
+from app.services.passwords import PasswordPolicy, context_words, generate_password
 
-DEMO = [("Nora Nurse", "nurse"), ("Paul Physician", "physician"), ("Bea Biomed", "biomed_tech"), ("Ada Admin", "admin")]
+# Fictional people, one per role. Accounts are personal: never share them between staff members.
+DEMO = [("Nora Lindqvist", "nurse"), ("Paul Okoye", "physician"), ("Bea Moreau", "biomed_tech"), ("Ada Brennan", "admin")]
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
-def _password(length: int = 20) -> str:
-    alphabet = string.ascii_letters + string.digits + "-_.!@#"
-    while True:
-        pw = "".join(secrets.choice(alphabet) for _ in range(length))
-        if any(c.islower() for c in pw) and any(c.isupper() for c in pw) and any(c.isdigit() for c in pw):
-            return pw
+def _password(full_name: str = "", email: str = "") -> str:
+    """Unique random one-time password that satisfies the policy (no context words)."""
+    return generate_password(PasswordPolicy(min_length=16), context_words(email, full_name), length=20)
+
+
+def operator_dsn() -> str:
+    dsn = os.environ.get("ADMIN_DATABASE_URL", "")
+    if not dsn:
+        raise SystemExit("ADMIN_DATABASE_URL is required (operator role; never the API's DATABASE_URL).")
+    host = urlsplit(dsn).hostname or ""
+    if host not in _LOCAL_HOSTS and "sslmode=verify-full" not in dsn and "sslmode=require" not in dsn:
+        raise SystemExit("ADMIN_DATABASE_URL must enforce TLS (sslmode=verify-full).")
+    return dsn
+
+
+def demo_email(full_name: str, domain: str) -> str:
+    first, last = full_name.lower().split()[0], full_name.lower().split()[-1]
+    return canonical_email(f"{first}.{last}.{secrets.token_hex(3)}@{domain}")
 
 
 async def create_demo_staff(email_domain: str) -> None:
     s = get_settings()
+    dsn = operator_dsn()
     key = s.supabase_service_role_key.get_secret_value()
     headers = {"apikey": key, "Authorization": f"Bearer {key}"}
     created: list[tuple[str, str, str, str]] = []
-    async with httpx.AsyncClient(base_url=str(s.supabase_url).rstrip("/"), timeout=15, verify=True) as client:
+    async with httpx.AsyncClient(base_url=str(s.supabase_url).rstrip("/"), timeout=15, verify=True,
+                                 follow_redirects=False) as client:
         for name, role in DEMO:
-            email = f"{role.replace('_', '.')}.{secrets.token_hex(3)}@{email_domain}"
-            pw = _password()
+            email = demo_email(name, email_domain)
+            pw = _password(name, email)
             resp = await client.post("/auth/v1/admin/users", headers=headers,
-                                     json={"email": email, "password": pw, "email_confirm": True})
+                                     json={"email": email, "password": pw, "email_confirm": True,
+                                           "app_metadata": {"demo": True}})
             resp.raise_for_status()
             created.append((resp.json()["id"], email, name, role))
-            print(f"{role:12} {email}  password: {pw}")
-    with psycopg.connect(s.database_url.get_secret_value()) as conn, conn.cursor() as cur:
+            print(f"{role:12} {email}  one-time password: {pw}")
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         for uid, email, name, role in created:
             cur.execute("insert into public.staff_profiles (user_id, email, full_name, role) values (%s, %s, %s, %s)",
                         (uid, email, name, role))
@@ -57,13 +89,36 @@ async def create_demo_staff(email_domain: str) -> None:
                          (select id, row_number() over (order by serial) rn from public.monitors) m
                          join (select id, row_number() over (order by label) rn from public.beds) b using (rn)
                        where m.rn <= 10 on conflict do nothing""", (admin_id,))
-    print("\nStore these passwords in a password manager now; they are not saved anywhere. "
-          "The admin account must enrol TOTP MFA at first sign-in.")
+    print("\nStore these passwords in a password manager now; they are not saved anywhere. Hand each one "
+          "only to its owner, who should change it at first sign-in (Profile > Change password). The admin account must enrol TOTP MFA at first sign-in. "
+          "Deactivate the demo accounts (Team) when the demo window ends.")
+
+
+def provision_monitor_secrets() -> None:
+    with psycopg.connect(operator_dsn()) as conn, conn.cursor() as cur:
+        cur.execute("select id, serial from public.monitors where status <> 'retired' order by serial")
+        for monitor_id, serial in cur.fetchall():
+            secret, digest = new_device_secret()
+            cur.execute("update public.monitors set device_secret_hash = %s, authenticated_at = null where id = %s",
+                        (digest, monitor_id))
+            print(f"{serial}  pairing code: {secret}")
+    print("\nPut each pairing code on its monitor label now; only the hashes are stored.")
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) >= 2 and argv[1] == "create-demo-staff":
+        if get_settings().is_production and "--allow-demo" not in argv:
+            print("Refusing to create demo staff in production (pass --allow-demo for a public demo project).")
+            return 2
+        domain = next((a for a in argv[2:] if not a.startswith("--")), "example.test")
+        asyncio.run(create_demo_staff(domain))
+        return 0
+    if len(argv) >= 2 and argv[1] == "provision-monitor-secrets":
+        provision_monitor_secrets()
+        return 0
+    print(__doc__)
+    return 2
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2 and sys.argv[1] == "create-demo-staff":
-        asyncio.run(create_demo_staff(sys.argv[2] if len(sys.argv) > 2 else "example.test"))
-    else:
-        print(__doc__)
-        sys.exit(2)
+    sys.exit(main(sys.argv))

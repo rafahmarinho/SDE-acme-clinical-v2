@@ -58,4 +58,4 @@ test("browser storage holds only the Supabase session", async ({ page }) => {
 - [ ] Playwright storage spec passes; after sign-out no session or PHI remains.
 - [ ] Bundle secret scan finds no service-role key; buckets are private.
 
-**Status:** Pending
+**Status:** Applied

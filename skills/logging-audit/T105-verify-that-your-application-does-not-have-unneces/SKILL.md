@@ -62,4 +62,4 @@ async def test_production_has_no_debug_surface(monkeypatch):
 - [ ] CI step greps the frontend production bundle and fails on `debugger`/source maps/secrets.
 - [ ] Manual check of deployed Vercel apps documented with no debug data found.
 
-**Status:** Pending
+**Status:** Applied

@@ -57,4 +57,4 @@ async def test_tampered_file_detected(storage, file_row):
 - [ ] Each tamper produces a security event and admin alert.
 - [ ] Legitimate API updates are not flagged.
 
-**Status:** Pending
+**Status:** Applied

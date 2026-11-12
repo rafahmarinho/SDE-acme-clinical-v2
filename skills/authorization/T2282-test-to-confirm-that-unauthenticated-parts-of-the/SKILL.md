@@ -54,4 +54,4 @@ it.each(PUBLIC_SCREENS)("%s renders without a session", async (path) => {
 - [ ] Password-reset flow works end-to-end from the email link without a prior session.
 - [ ] No non-whitelisted route is reachable (covered jointly with T84).
 
-**Status:** Pending
+**Status:** Applied

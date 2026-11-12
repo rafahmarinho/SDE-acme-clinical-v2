@@ -56,4 +56,4 @@ test("no token in any visited URL", async ({ page }) => {
 - [ ] Query-string tokens are rejected by the API.
 - [ ] Vercel logs contain no tokens after the e2e run.
 
-**Status:** Pending
+**Status:** Applied

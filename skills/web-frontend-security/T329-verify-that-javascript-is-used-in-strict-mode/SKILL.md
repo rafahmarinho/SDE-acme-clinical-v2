@@ -55,4 +55,4 @@ it("classic JS files in src opt in to strict mode", () => {
 - [ ] Strict-mode vitest suite passes on source and built output.
 - [ ] ESLint `strict` rules from T325 pass in CI.
 
-**Status:** Pending
+**Status:** Applied

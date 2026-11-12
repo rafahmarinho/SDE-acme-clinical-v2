@@ -60,4 +60,4 @@ async def on_validation(request, exc):
 - [ ] Pytest asserts that a 403 role violation, a 422 validation error and a simulation reset each produce a security event.
 - [ ] Security events are not mixed into the clinical events stream.
 
-**Status:** Pending
+**Status:** Applied

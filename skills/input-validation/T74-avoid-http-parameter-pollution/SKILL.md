@@ -56,4 +56,4 @@ async def list_alarms(status: Annotated[list[AlarmStatus], Query(max_length=5)] 
 - [ ] `GET /api/alarms?status=active&status=acknowledged` works and each value is enum-validated.
 - [ ] Test confirms a polluted payload split across duplicates (`q=<scr&q=ipt>`) is rejected.
 
-**Status:** Pending
+**Status:** Applied

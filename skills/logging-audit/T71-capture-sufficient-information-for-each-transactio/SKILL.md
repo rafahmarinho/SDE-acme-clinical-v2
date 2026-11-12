@@ -65,4 +65,4 @@ async def audit(db, request, user, action, target_type, target_id, outcome="succ
 - [ ] Every mutating endpoint calls `audit()`; T232 test passes.
 - [ ] Oversized `details`/`user_supplied` inserts are rejected/truncated (test).
 
-**Status:** Pending
+**Status:** Applied

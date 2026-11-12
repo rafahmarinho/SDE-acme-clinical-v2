@@ -72,4 +72,4 @@ def test_weak_system_secret_rejected(secret, base_env):
 - [ ] `Settings()` raises for placeholder, short or low-entropy system secrets and database passwords (pytest).
 - [ ] `.env.example` values do not pass validation, and the README explains how to generate real secrets.
 
-**Status:** Pending
+**Status:** Applied

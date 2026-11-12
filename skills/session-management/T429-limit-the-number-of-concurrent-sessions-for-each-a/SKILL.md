@@ -63,4 +63,4 @@ async def register_session(request: Request, claims: Claims = Depends(verify_sup
 - [ ] Users can list and remotely terminate their own sessions from the Profile screen; history rows keep login time, user agent and idle time.
 - [ ] Covered by tests in `backend/tests/test_concurrent_sessions.py` (see T430).
 
-**Status:** Pending
+**Status:** Applied

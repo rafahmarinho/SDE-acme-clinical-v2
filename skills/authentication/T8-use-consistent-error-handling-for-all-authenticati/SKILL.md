@@ -60,4 +60,4 @@ export async function requestReset(email: string, captchaToken: string) {
 - [ ] Password reset shows the same confirmation for existing and non-existing emails.
 - [ ] Vitest `frontend/src/services/auth.test.ts` mocks supabase errors (`invalid_credentials`, `email_not_confirmed`, `user_banned`) and checks that all of them produce `GENERIC_LOGIN_ERROR`.
 
-**Status:** Pending
+**Status:** Applied

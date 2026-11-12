@@ -62,4 +62,4 @@ async def update(tid: UUID, body: ThresholdUpdate, request: Request,
 - [ ] Suspended accounts cannot perform sensitive actions even with a valid JWT.
 - [ ] Out-of-range threshold changes are held, logged and require a second physician.
 
-**Status:** Pending
+**Status:** Applied

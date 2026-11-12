@@ -53,4 +53,4 @@ def test_runtime_db_user_is_acme_api(settings):
 - [ ] Config test confirms the runtime user is `acme_api`.
 - [ ] `\du+` review of the hosted project documented.
 
-**Status:** Pending
+**Status:** Applied

@@ -56,4 +56,4 @@ async def test_integrity_drift_detected(client, admin_token, db):
 - [ ] Out-of-band changes are detected by the integrity report.
 - [ ] Every change produces an audit event.
 
-**Status:** Pending
+**Status:** Applied

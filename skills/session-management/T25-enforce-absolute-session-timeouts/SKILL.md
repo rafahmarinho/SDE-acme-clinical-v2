@@ -53,4 +53,4 @@ async def require_session(claims: Claims = Depends(verify_supabase_jwt), db=Depe
 - [ ] Users see a warning before expiry and can only lower their own limit.
 - [ ] Tests in `backend/tests/test_absolute_timeout.py` (see T92).
 
-**Status:** Pending
+**Status:** Applied

@@ -53,4 +53,4 @@ select is((select count(*) from storage.buckets where public), 0::bigint, 'no pu
 - [ ] The RLS and storage pgTAP checks pass, and an anon-key-only REST query returns 0 patient rows.
 - [ ] Results of the manual cross-machine curl test are recorded per release.
 
-**Status:** Pending
+**Status:** Applied

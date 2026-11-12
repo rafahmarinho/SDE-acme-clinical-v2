@@ -67,4 +67,4 @@ create policy patients_break_glass on clinical.patients for select to authentica
 - [ ] Grant expires after TTL and access is lost on the next request.
 - [ ] Activation requires warning acknowledgement and reason; all details are audited and visible in the review screen.
 
-**Status:** Pending
+**Status:** Applied

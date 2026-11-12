@@ -60,4 +60,4 @@ window.location.replace("/signed-out");   // full navigation so the header is ap
 - [ ] After logout no auth token, patient name, vital value or observation is present in any storage area of the SPA origin.
 - [ ] The e2e test runs in CI on Chromium.
 
-**Status:** Pending
+**Status:** Applied

@@ -63,4 +63,4 @@ async def test_api_csp_and_report_endpoint(client):
 - [ ] vitest CSP suite and pytest CSP suite pass in CI.
 - [ ] Deployed responses match the configured policy; report endpoint returns 204 and logs the violation.
 
-**Status:** Pending
+**Status:** Applied

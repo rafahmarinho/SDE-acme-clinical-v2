@@ -54,4 +54,4 @@ export async function changeEmail(newEmail: string) {
 - [ ] Duplicate attempts generate an owner warning and an admin alert (`backend/tests/test_invite_enumeration.py`).
 - [ ] `enable_signup = false`, `double_confirm_changes = true` and `otp_expiry <= 3600` are set in `supabase/config.toml`.
 
-**Status:** Pending
+**Status:** Applied

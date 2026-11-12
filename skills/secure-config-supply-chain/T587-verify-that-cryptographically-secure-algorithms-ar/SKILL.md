@@ -63,4 +63,4 @@ def test_random_module_only_in_simulation():
 - [ ] All IDs/tokens use `secrets`, `uuid4`, `gen_random_uuid` or Web Crypto.
 - [ ] ESLint rule blocks `Math.random` in security-relevant frontend code.
 
-**Status:** Pending
+**Status:** Applied

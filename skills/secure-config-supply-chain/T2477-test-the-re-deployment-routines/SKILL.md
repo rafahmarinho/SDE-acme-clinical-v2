@@ -58,4 +58,4 @@ jobs:
 - [ ] Rollback and restore drills documented with dates and duration.
 - [ ] Recovery time is within the documented target.
 
-**Status:** Pending
+**Status:** Applied

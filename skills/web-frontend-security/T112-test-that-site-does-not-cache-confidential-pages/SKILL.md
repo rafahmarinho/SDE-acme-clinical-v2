@@ -57,4 +57,4 @@ async def test_error_responses_are_not_cacheable():
 - [ ] Manual curl check against the Vercel deployments shows `no-store` for the API and `index.html`.
 - [ ] After logout, browser Back navigation does not show cached patient data.
 
-**Status:** Pending
+**Status:** Applied

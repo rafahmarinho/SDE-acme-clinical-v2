@@ -60,4 +60,4 @@ create policy admin_write_policy on public.password_policy as restrictive for al
 - [ ] `backend/tests/test_admin_mfa.py` signs JWTs locally with aal1 and aal2 claims and checks the 401 and 200 outcomes.
 - [ ] RLS rejects writes to admin tables with an aal1 token (SQL test run with `set request.jwt.claims`).
 
-**Status:** Pending
+**Status:** Applied

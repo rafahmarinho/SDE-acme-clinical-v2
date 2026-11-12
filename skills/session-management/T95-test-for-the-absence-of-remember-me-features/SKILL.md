@@ -55,4 +55,4 @@ async def test_password_change_requires_recent_auth(api, nurse, freeze_time):
 - [ ] Session does not survive a browser restart; it does survive a reload.
 - [ ] Critical actions demand re-authentication.
 
-**Status:** Pending
+**Status:** Applied

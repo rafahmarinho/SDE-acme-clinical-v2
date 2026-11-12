@@ -53,4 +53,4 @@ def test_report_does_not_evaluate(p):
 - [ ] `backend/tests/test_ssti.py` passes; payloads appear literally (escaped) in reports.
 - [ ] Code search finds no `from_string(`, `Template(` or `render_template_string` applied to request data.
 
-**Status:** Pending
+**Status:** Applied

@@ -67,4 +67,4 @@ def test_public_signup_disabled(supabase_config):
 - [ ] The lifecycle, permission and config tests pass in CI.
 - [ ] A checklist in the test report answers every T2277 question with a linked test or evidence, and none is answered "no".
 
-**Status:** Pending
+**Status:** Applied

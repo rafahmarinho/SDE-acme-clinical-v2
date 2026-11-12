@@ -55,4 +55,4 @@ async def test_internal_auth_throttles_after_five_failures(client, settings):
 - [ ] The pytest test passes: 429 on the 6th attempt, with `Retry-After`.
 - [ ] Throttling state is shared across instances (an integration test with two app instances, or the limiter backed by Postgres or Redis).
 
-**Status:** Pending
+**Status:** Applied

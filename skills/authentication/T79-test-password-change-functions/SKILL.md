@@ -59,4 +59,4 @@ async def test_wrong_old_password_rejected(client):
 - [ ] The frontend spy test confirms no direct `updateUser({ password })` call.
 - [ ] A manual console test record shows that the direct update requires reauthentication.
 
-**Status:** Pending
+**Status:** Applied

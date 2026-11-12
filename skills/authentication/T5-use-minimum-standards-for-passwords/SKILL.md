@@ -64,4 +64,4 @@ async def assert_meets_minimum(pw: str, context: list[str]) -> None:
 - [ ] `backend/tests/test_password_minimums.py` mocks the HIBP range response (respx) and checks that a breached password is rejected and a strong random passphrase is accepted.
 - [ ] Supabase config shows a minimum length of 12 or more and leaked-password protection is enabled (documented in the README).
 
-**Status:** Pending
+**Status:** Applied

@@ -1,0 +1,114 @@
+# Supabase project configuration (Supabase CLI). Authentication settings are kept as code so they can
+# be reviewed and tested (backend/tests/test_authentication.py). Apply the same values to the hosted
+# project (Dashboard > Authentication) - see docs/security/authentication.md for the checklist.
+# No secrets in this file: values that are secret use env(...) and come from the operator's environment.
+
+project_id = "acme-clinical"
+
+[api]
+enabled = true
+port = 54321
+# Only `public` is exposed through the Data API (RLS on every table). The `private` schema (lockout
+# counters, login history, device-auth failures) is never exposed.
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 200
+
+[db]
+port = 54322
+major_version = 15
+
+[db.seed]
+enabled = true
+# Demo data only: no auth.users rows, no passwords (see supabase/seed.sql).
+sql_paths = ["./seed.sql"]
+
+[auth]
+enabled = true
+site_url = "https://acme-clinical.vercel.app"
+# Exact allow-list for redirects (password recovery, invitations, e-mail change). No wildcards.
+additional_redirect_urls = [
+  "https://acme-clinical.vercel.app/reset-password",
+  "http://localhost:5173/reset-password",
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+# Accounts are created only by administrators (Team > Invite, Supabase invite link). No self sign-up.
+enable_signup = false
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+# Platform floor; the application may require more (public.security_settings.password_min_length).
+minimum_password_length = 12
+password_requirements = "lower_upper_letters_digits"
+# Leaked-password protection (Have I Been Pwned) is a hosted-project setting:
+# Dashboard > Authentication > Attack Protection > "Prevent use of leaked passwords" = ON.
+
+[auth.rate_limit]
+# Per hour unless noted. Tight values: a hospital staff directory, not a consumer app.
+email_sent = 10
+sms_sent = 0
+anonymous_users = 0
+token_refresh = 150
+# Sign-in / sign-up requests per 5 minutes per IP address.
+sign_in_sign_ups = 10
+# OTP / magic-link / recovery-token verifications per 5 minutes per IP address.
+token_verifications = 10
+
+[auth.captcha]
+# CAPTCHA is not enabled yet: it needs a Turnstile/hCaptcha widget on Login/ForgotPassword and a CSP
+# change. Brute force is limited by [auth.rate_limit] and the per-account lockout hook below.
+enabled = false
+
+[auth.sessions]
+# Absolute session lifetime aligned with security_settings.session_absolute_hours (12 h default).
+timebox = "12h"
+inactivity_timeout = "1h"
+
+[auth.email]
+enable_signup = false
+# Changing the e-mail address must be confirmed from both the old and the new address.
+double_confirm_changes = true
+enable_confirmations = true
+# Password changes from a session older than 24 h require reauthentication (nonce), in addition to
+# the current-password check performed by the change-password screen.
+secure_password_change = true
+max_frequency = "60s"
+otp_length = 6
+# Invitation, recovery and e-mail-change links are single use and expire after one hour.
+otp_expiry = 3600
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+
+[auth.mfa]
+max_enrolled_factors = 10
+
+# TOTP MFA (authenticator app). Required for administrators: the API rejects admin tokens below aal2.
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.mfa.phone]
+enroll_enabled = false
+verify_enabled = false
+
+[auth.mfa.web_authn]
+enroll_enabled = false
+verify_enabled = false
+
+# Per-account soft lockout (supabase/migrations/0006_auth.sql). Also enable it in the hosted project:
+# Dashboard > Authentication > Hooks > Password Verification Attempt (requires a plan that offers it).
+[auth.hook.password_verification_attempt]
+enabled = true
+uri = "pg-functions://postgres/public/hook_password_verification_attempt"
+
+[auth.external.apple]
+enabled = false
+
+[auth.external.google]
+enabled = false
+
+[auth.external.github]
+enabled = false

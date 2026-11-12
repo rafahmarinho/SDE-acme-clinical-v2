@@ -73,4 +73,4 @@ def require(perm: Perm):
 - [ ] `backend/tests/test_authz_matrix.py` parametrizes every role x every protected endpoint and asserts 403 for permissions absent from `PERMISSIONS`.
 - [ ] RLS helper `has_permission()` and the Python matrix are generated from / checked against the same definition (test compares them).
 
-**Status:** Pending
+**Status:** Applied

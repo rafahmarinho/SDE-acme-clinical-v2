@@ -67,4 +67,4 @@ async def test_ack_refused_when_audit_cannot_be_written(monkeypatch, nurse_token
 - [ ] Test fails if no admin alert is produced on audit failure.
 - [ ] Tests run in CI (`pytest backend/tests`).
 
-**Status:** Pending
+**Status:** Applied

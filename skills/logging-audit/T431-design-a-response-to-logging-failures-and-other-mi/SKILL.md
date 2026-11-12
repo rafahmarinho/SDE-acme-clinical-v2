@@ -70,4 +70,4 @@ async def write_audit(db, event: dict, *, critical: bool = False) -> None:
 - [ ] Alarm acknowledgement returns 503 and is not persisted when its audit write fails.
 - [ ] An administrator alert row/Realtime event is produced on audit failure.
 
-**Status:** Pending
+**Status:** Applied

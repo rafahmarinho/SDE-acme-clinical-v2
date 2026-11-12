@@ -61,4 +61,4 @@ async def test_docs_disabled_in_production(prod_client):
 - [ ] The component authentication inventory is documented in the README, and each entry has a test.
 - [ ] A grep for `verify=False` in `backend/` returns nothing.
 
-**Status:** Pending
+**Status:** Applied

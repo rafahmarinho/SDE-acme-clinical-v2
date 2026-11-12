@@ -68,4 +68,4 @@ def test_expired_dirs_swept(isolated_tmp):
 - [ ] 20 consecutive reports leave the temp root empty.
 - [ ] Expired directories are removed by the sweep.
 
-**Status:** Pending
+**Status:** Applied

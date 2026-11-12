@@ -64,4 +64,4 @@ def template_path(name: str) -> Path:
 - [ ] `template_path` rejects names outside the allow-list and traversal attempts (unit test).
 - [ ] T297 traversal test passes.
 
-**Status:** Pending
+**Status:** Applied

@@ -60,4 +60,4 @@ grant select on audit.events to acme_auditor;  -- review by a distinct role
 - [ ] Administrator token gets 403 on `POST /alarms/{id}/ack` and `PUT /thresholds/{id}`.
 - [ ] `UPDATE`/`DELETE` on `audit.events` as `acme_api` fails.
 
-**Status:** Pending
+**Status:** Applied

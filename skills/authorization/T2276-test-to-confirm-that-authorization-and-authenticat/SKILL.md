@@ -62,4 +62,4 @@ it.each(protectedScreens)("%s shows a logout control", async (path) => {
 - [ ] Every protected screen has logout (frontend test) and logout invalidates the session.
 - [ ] No nonpublic resource is reachable anonymously.
 
-**Status:** Pending
+**Status:** Applied

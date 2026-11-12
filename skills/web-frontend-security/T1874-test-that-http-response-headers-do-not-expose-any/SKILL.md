@@ -51,4 +51,4 @@ async def test_no_tech_disclosure(method, path):
 - [ ] `backend/tests/test_header_leakage.py` passes.
 - [ ] Manual header review of both deployments finds no software versions.
 
-**Status:** Pending
+**Status:** Applied

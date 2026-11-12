@@ -52,4 +52,4 @@ select * from finish(); rollback;
 - [ ] PostgREST call `rpc/reset_demo_data` as an authenticated user is rejected.
 - [ ] Staff cannot change their own role through Supabase client updates.
 
-**Status:** Pending
+**Status:** Applied

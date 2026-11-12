@@ -59,4 +59,4 @@ async def test_valid_png_accepted(nurse_token, patient_id, tiny_png_bytes):
 - [ ] Direct Storage upload with the anon/authenticated key is denied by policy (integration test against local Supabase).
 - [ ] Test runs in CI.
 
-**Status:** Pending
+**Status:** Applied

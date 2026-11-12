@@ -51,4 +51,4 @@ async def dispatch(self, request, call_next):
 - [ ] `frontend/.env.example` and `backend/.env.example` use only `https://` URLs.
 - [ ] Verified by T333 tests.
 
-**Status:** Pending
+**Status:** Applied

@@ -57,4 +57,4 @@ export function JustInTimeNotice({ context }: { context: "login" | "profile" | "
 - [ ] Just-in-time notes appear on all data-collection forms.
 - [ ] A new notice version triggers re-display at next login.
 
-**Status:** Pending
+**Status:** Applied

@@ -55,4 +55,4 @@ supabase.storage.from_("reports").upload(
 - [ ] Stored report objects have an explicit allow-listed content type.
 - [ ] Verified by T436 tests.
 
-**Status:** Pending
+**Status:** Applied

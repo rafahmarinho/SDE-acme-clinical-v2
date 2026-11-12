@@ -64,4 +64,4 @@ async def run_purge(db, storage, now: datetime) -> dict[str, int]:
 - [ ] Each run writes a `purge_log` row with counts only.
 - [ ] Tests in `backend/tests/test_retention_purge.py` (see T735) cover delete, anonymize and legal-hold paths.
 
-**Status:** Pending
+**Status:** Applied

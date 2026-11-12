@@ -51,4 +51,4 @@ def require_same_origin(request: Request):
 - [ ] A cross-site form POST to `/api/auth/refresh` or `/api/alarms/{id}/acknowledge` from another origin fails (no cookie sent, `403 bad_origin`).
 - [ ] Test `backend/tests/test_cookies.py::test_samesite_strict` added.
 
-**Status:** Pending
+**Status:** Applied

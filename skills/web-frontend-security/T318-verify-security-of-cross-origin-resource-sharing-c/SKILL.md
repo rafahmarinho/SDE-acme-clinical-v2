@@ -69,4 +69,4 @@ async def test_auth_required_any_verb(client, method):
 - [ ] All verbs return 401 without a token, with and without `Origin`.
 - [ ] No `*` or regex origin in config.
 
-**Status:** Pending
+**Status:** Applied

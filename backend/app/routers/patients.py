@@ -12,9 +12,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.config import get_settings
 from app.core.security import Perm, Principal, require
 from app.db import fetch_all, fetch_one, transaction
-from app.schemas import Page, PatientOut, ReadingOut, SearchText
+from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, Page, PatientOut, ReadingOut, SearchText
 
 router = APIRouter(prefix="/v1/patients", tags=["patients"])
+MAX_READINGS = 120  # two minutes of 1 Hz vitals for the live chart; the server-side LIMIT always applies
 Reader = Annotated[Principal, Depends(require(Perm.PATIENT_READ))]
 
 _BASE = """
@@ -38,9 +39,10 @@ async def list_patients(
     q: Annotated[SearchText | None, Query()] = None,
     ward_id: UUID | None = None,
     alarming: bool | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 25,
-    offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 25,
+    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> Page[PatientOut]:
+    # The search term only ever travels as a bound parameter (LIKE wildcards escaped), never in the SQL text.
     limit = min(limit, get_settings().max_page_size)
     params: dict = {"ward": str(ward_id) if ward_id else None, "limit": limit + 1, "offset": offset,
                     "q": f"%{_escape_like(q)}%" if q else None, "alarming": alarming}
@@ -65,13 +67,13 @@ async def get_patient(patient_id: UUID, principal: Reader) -> PatientOut:
     return PatientOut(**row)
 
 
-@router.get("/{patient_id}/readings", response_model=list[ReadingOut])
+@router.get("/{patient_id}/readings", response_model=Page[ReadingOut])
 async def recent_readings(patient_id: UUID, principal: Reader,
-                          limit: Annotated[int, Query(ge=1, le=120)] = 60) -> list[ReadingOut]:
+                          limit: Annotated[int, Query(ge=1, le=MAX_READINGS)] = 60) -> Page[ReadingOut]:
     async with transaction(principal) as conn:
         if await fetch_one(conn, "select 1 from public.patients where id = %s", (str(patient_id),)) is None:
             raise HTTPException(404, "Patient not found.")
         rows = await fetch_all(conn, """select recorded_at, heart_rate, spo2, resp_rate, bp_systolic, bp_diastolic, ecg,
                quality::text as quality from public.readings where patient_id = %s order by recorded_at desc limit %s""",
                                (str(patient_id), limit))
-    return [ReadingOut(**r) for r in rows]
+    return Page[ReadingOut](items=[ReadingOut(**r) for r in rows])

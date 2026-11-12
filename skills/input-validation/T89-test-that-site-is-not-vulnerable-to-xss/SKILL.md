@@ -54,4 +54,4 @@ async def test_error_not_reflected_as_html(client):
 - [ ] Vitest XSS suites pass for search, patient detail, staff and alarm components.
 - [ ] Manual/ZAP run documents no pop-up in any supported browser for reflected and stored payloads.
 
-**Status:** Pending
+**Status:** Applied

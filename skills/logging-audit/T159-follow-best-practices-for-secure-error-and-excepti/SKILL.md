@@ -75,4 +75,4 @@ def install_error_handlers(app: FastAPI) -> None:
 - [ ] Pytest: a forced exception returns 500 with generic text and no traceback/SQL.
 - [ ] Pytest: login with unknown e-mail and wrong password return identical bodies.
 
-**Status:** Pending
+**Status:** Applied

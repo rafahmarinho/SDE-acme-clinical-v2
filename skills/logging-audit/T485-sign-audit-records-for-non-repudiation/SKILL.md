@@ -61,4 +61,4 @@ def seal(record: dict, prev_hash: str) -> dict:
 - [ ] A verifier script/service (`services/reports.py`) validates the full chain and reports breaks.
 - [ ] Unit test: modifying any field of a sealed record fails verification.
 
-**Status:** Pending
+**Status:** Applied

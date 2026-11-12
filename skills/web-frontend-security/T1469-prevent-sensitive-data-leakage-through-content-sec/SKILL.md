@@ -69,4 +69,4 @@ async def csp_report(request: Request) -> Response:
 - [ ] `backend/tests/test_csp_report.py` posts a report with `document-uri: https://web/patients/123?token=abc` and asserts the logged record contains only the origin.
 - [ ] Oversized or malformed reports are dropped with 204.
 
-**Status:** Pending
+**Status:** Applied

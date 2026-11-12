@@ -61,4 +61,4 @@ def encrypt(key: bytes, plaintext: bytes, aad: bytes) -> bytes:
 - [ ] Symmetric keys are at least 256 bits; nonces are random per message.
 - [ ] Algorithm inventory documented and reviewed.
 
-**Status:** Pending
+**Status:** Applied

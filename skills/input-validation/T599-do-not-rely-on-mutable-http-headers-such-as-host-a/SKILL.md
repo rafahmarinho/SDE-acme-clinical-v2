@@ -55,4 +55,4 @@ async def reset(user: User = Depends(require_role("administrator"))):
 - [ ] Test: request with `Host: evil.example` returns 400; invite/reset links always use the configured frontend URL.
 - [ ] Simulation reset without a valid admin JWT is denied regardless of Referer.
 
-**Status:** Pending
+**Status:** Applied

@@ -54,4 +54,4 @@ The README will cover install and deploy steps only. Operators will not know whi
 - [ ] Risky actions show confirmation warnings in the UI (vitest test for reset dialog).
 - [ ] `SECURITY.md` describes vulnerability reporting.
 
-**Status:** Pending
+**Status:** Applied

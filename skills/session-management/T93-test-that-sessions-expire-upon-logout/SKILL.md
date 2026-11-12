@@ -58,4 +58,4 @@ async def test_authenticated_responses_not_cacheable(api, nurse):
 - [ ] Back button / direct URL after logout shows the login screen, never cached patient data.
 - [ ] `GET /auth/logout` returns `405`.
 
-**Status:** Pending
+**Status:** Applied

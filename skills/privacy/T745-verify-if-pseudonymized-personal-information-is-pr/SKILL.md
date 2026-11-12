@@ -53,4 +53,4 @@ rollback;
 - [ ] Biomedical technician/admin roles cannot join pseudonyms to identities via API.
 - [ ] Pseudonyms are random, not derived from names, MRN or DOB.
 
-**Status:** Pending
+**Status:** Applied

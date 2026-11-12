@@ -57,4 +57,4 @@ async def test_tampered_cookie_does_not_grant_role(api, nurse):
 - [ ] Tampered or forged cookies do not change authorization.
 - [ ] Tests run in CI.
 
-**Status:** Pending
+**Status:** Applied

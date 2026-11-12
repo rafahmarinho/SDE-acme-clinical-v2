@@ -52,4 +52,4 @@ it("privacy page lists purposes, categories, recipients and retention", () => {
 - [ ] Notice version change re-prompts users (backend test).
 - [ ] `consents` rows provide evidence of notification.
 
-**Status:** Pending
+**Status:** Applied

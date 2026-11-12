@@ -60,4 +60,4 @@ def assert_ward_access(user: CurrentUser, ward_id: UUID) -> None:
 - [ ] Deactivating a user or changing their role makes their next API call fail with 401/403 without waiting for token expiry.
 - [ ] The backend's `DATABASE_URL` in `.env.example` references `acme_api`, not `postgres`.
 
-**Status:** Pending
+**Status:** Applied

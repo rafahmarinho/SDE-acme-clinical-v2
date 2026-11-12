@@ -56,4 +56,4 @@ export const requestPasswordReset = (email: string) =>
 - [ ] Supabase Redirect URLs allow-list contains only ACME Clinical frontend origins.
 - [ ] Unit tests (see T125) reject external and encoded-bypass destinations.
 
-**Status:** Pending
+**Status:** Applied

@@ -53,4 +53,4 @@ def clear_refresh_cookie(resp: Response) -> None:
 - [ ] If the BFF option exists, every `Set-Cookie` for the session/refresh cookie contains `HttpOnly`.
 - [ ] Unit test `backend/tests/test_cookies.py::test_refresh_cookie_flags` asserts the flag (see T91).
 
-**Status:** Pending
+**Status:** Applied

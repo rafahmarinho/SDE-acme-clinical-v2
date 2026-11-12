@@ -1,3 +1,40 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [{ "source": "/((?!assets/).*)", "destination": "/index.html" }],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://project-ref.supabase.co; font-src 'self'; connect-src 'self' https://acme-clinical-api.vercel.app https://project-ref.supabase.co wss://project-ref.supabase.co; worker-src 'self' blob:; manifest-src 'self'; media-src 'none'; frame-src 'none'; child-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests; report-uri https://acme-clinical-api.vercel.app/v1/csp-report; report-to csp"
+        },
+        { "key": "Reporting-Endpoints", "value": "csp=\"https://acme-clinical-api.vercel.app/v1/csp-report\"" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        {
+          "key": "Permissions-Policy",
+          "value": "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), xr-spatial-tracking=()"
+        },
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Resource-Policy", "value": "same-site" },
+        { "key": "X-XSS-Protection", "value": "0" },
+        { "key": "X-Permitted-Cross-Domain-Policies", "value": "none" }
+      ]
+    },
+    {
+      "source": "/((?!assets/).*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, max-age=0, must-revalidate, private" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Expires", "value": "0" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
 }

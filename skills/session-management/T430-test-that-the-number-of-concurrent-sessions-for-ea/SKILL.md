@@ -63,4 +63,4 @@ async def test_user_can_list_and_terminate_own_sessions(api, supabase_login):
 - [ ] Concurrency test never leaves more than the configured number of active sessions.
 - [ ] Cross-user session listing/termination is denied.
 
-**Status:** Pending
+**Status:** Applied

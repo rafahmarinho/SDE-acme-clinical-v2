@@ -59,4 +59,4 @@ async def preview(report_id: str, user=Depends(current_user)):
 - [ ] Uploading an HTML or SVG file is rejected; a test under `backend/tests` covers this.
 - [ ] A test file with `<script>top.location='https://example.org'</script>` cannot navigate the app when previewed.
 
-**Status:** Pending
+**Status:** Applied

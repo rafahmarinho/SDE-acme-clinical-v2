@@ -50,4 +50,4 @@ async def test_hsts_present(api):
 - [ ] `__Host-` cookies have `Path=/` and no `Domain`.
 - [ ] HSTS test passes in CI.
 
-**Status:** Pending
+**Status:** Applied

@@ -53,4 +53,4 @@ def test_canonical_form(v):
 - [ ] Only one auth user and profile exists after all registration variants are submitted.
 - [ ] All login variants resolve to the same UUID, and no variant obtains a different role.
 
-**Status:** Pending
+**Status:** Applied

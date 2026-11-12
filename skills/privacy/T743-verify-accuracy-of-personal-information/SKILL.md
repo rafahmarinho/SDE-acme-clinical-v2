@@ -59,4 +59,4 @@ async def test_monitor_single_bed_constraint(db, monitor, bed_a, bed_b):
 - [ ] Author and timestamp of observations are server-assigned.
 - [ ] Tests above pass in CI.
 
-**Status:** Pending
+**Status:** Applied

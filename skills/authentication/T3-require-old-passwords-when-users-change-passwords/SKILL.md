@@ -58,4 +58,4 @@ async def change_password(body: PasswordChange, claims: dict = Depends(verify_su
 - [ ] `backend/tests/test_change_password.py` (respx-mocked GoTrue) covers a wrong current password (400), a weak new password (422) and success (204 plus audit row).
 - [ ] `secure_password_change = true` is present in `supabase/config.toml`.
 
-**Status:** Pending
+**Status:** Applied

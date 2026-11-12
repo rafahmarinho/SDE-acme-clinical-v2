@@ -60,4 +60,4 @@ async def test_api_requires_acknowledgement(client_as, ids, method, path, role):
 - [ ] Backend returns 422 when acknowledgement fields are missing.
 - [ ] Playwright confirms login notice precedes data access.
 
-**Status:** Pending
+**Status:** Applied

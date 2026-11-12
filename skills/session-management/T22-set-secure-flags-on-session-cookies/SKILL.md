@@ -54,4 +54,4 @@ async def require_https(request, call_next):
 - [ ] HSTS header present on frontend and API responses.
 - [ ] Verified by `backend/tests/test_cookies.py` (see T88).
 
-**Status:** Pending
+**Status:** Applied

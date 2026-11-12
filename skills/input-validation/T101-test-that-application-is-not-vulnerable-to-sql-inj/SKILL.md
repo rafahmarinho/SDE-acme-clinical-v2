@@ -59,4 +59,4 @@ async def test_no_sqli(path, param, payload, auth_headers):
 - [ ] No response contains PostgreSQL/psycopg error text; injected payloads return 422 or the same result count as a non-matching baseline.
 - [ ] CI static check finds zero string-built SQL statements in `backend/app`.
 
-**Status:** Pending
+**Status:** Applied

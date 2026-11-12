@@ -56,4 +56,4 @@ app.add_middleware(
 - [ ] CORS preflight advertises only the explicit method list and origin.
 - [ ] Verified by T113 tests.
 
-**Status:** Pending
+**Status:** Applied

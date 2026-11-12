@@ -58,4 +58,4 @@ def test_no_tls_verification_disabled_in_source():
 - [ ] Proxy interception test documented with result (connections not established).
 - [ ] Config rejects non-HTTPS service URLs in production.
 
-**Status:** Pending
+**Status:** Applied

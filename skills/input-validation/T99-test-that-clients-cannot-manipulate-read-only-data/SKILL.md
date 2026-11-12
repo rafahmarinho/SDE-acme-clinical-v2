@@ -56,4 +56,4 @@ async def test_observation_author_from_token(client, nurse_headers, patient_id, 
 - [ ] Manual proxy test documented: modified hidden/read-only fields have no effect.
 - [ ] Direct Supabase update of a protected column with a user JWT fails due to RLS.
 
-**Status:** Pending
+**Status:** Applied

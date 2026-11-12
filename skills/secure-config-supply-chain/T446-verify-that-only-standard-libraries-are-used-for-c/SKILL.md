@@ -56,4 +56,4 @@ def test_no_nonstandard_crypto_libraries():
 - [ ] `pip-audit` and `pnpm audit` report no known vulnerabilities in crypto libraries.
 - [ ] JWT verification uses PyJWT with explicit algorithm allow-list.
 
-**Status:** Pending
+**Status:** Applied

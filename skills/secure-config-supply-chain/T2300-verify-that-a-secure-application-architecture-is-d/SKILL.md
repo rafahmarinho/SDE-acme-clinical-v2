@@ -52,4 +52,4 @@ def test_frontend_bundle_has_no_service_key():
 - [ ] Architecture document matches deployed projects.
 - [ ] Platform scaling/CDN/backup checklist completed and recorded.
 
-**Status:** Pending
+**Status:** Applied

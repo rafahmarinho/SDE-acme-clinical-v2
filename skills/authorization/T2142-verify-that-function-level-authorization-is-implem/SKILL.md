@@ -58,4 +58,4 @@ async def test_admin_functions_denied(client_as):
 - [ ] Non-admin roles receive 403 for all administrative functions.
 - [ ] Request bodies containing `role`/`is_admin` do not change authorization outcome.
 
-**Status:** Pending
+**Status:** Applied

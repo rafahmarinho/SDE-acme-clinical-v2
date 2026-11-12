@@ -63,4 +63,4 @@ create policy clinical_read on public.patients for select to authenticated
 - [ ] A disabled user's existing session fails on the next API call, and a new login is refused.
 - [ ] `backend/tests/test_staff_lifecycle.py` covers invite, role change, disable and reactivate, and checks that users cannot set their own role through `updateUser({ data })`.
 
-**Status:** Pending
+**Status:** Applied

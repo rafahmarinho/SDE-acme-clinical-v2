@@ -68,4 +68,4 @@ export const UserBadge = ({ name, email }: { name: string; email: string }) => {
 - [ ] Non-ASCII MRN/bed codes return 422.
 - [ ] Email domains with IDN characters render as `xn--` Punycode in staff screens.
 
-**Status:** Pending
+**Status:** Applied

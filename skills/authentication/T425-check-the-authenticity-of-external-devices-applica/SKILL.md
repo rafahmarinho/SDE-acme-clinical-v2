@@ -61,4 +61,4 @@ async def verify_reading(r: SignedReading) -> dict:
 - [ ] Binding an unregistered or retired monitor to a bed fails with 409 or 403.
 - [ ] `backend/tests/test_device_auth.py` covers valid, tampered-payload, wrong-key, replay and stale cases.
 
-**Status:** Pending
+**Status:** Applied

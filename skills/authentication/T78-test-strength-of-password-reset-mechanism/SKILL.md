@@ -62,4 +62,4 @@ def test_reset_hardening():
 - [ ] Vitest and pytest checks above pass in CI.
 - [ ] A manual test record (local Supabase Mailpit) confirms single-use, expiring links, no plaintext password, and 429 after repeated requests.
 
-**Status:** Pending
+**Status:** Applied

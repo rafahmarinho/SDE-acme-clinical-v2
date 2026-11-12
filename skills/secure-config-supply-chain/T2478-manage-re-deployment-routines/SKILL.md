@@ -54,4 +54,4 @@ curl -fsS "$API_BASE_URL/health" && curl -fsS -o /dev/null "$WEB_BASE_URL/"
 - [ ] Rollback and restore procedures documented.
 - [ ] Health endpoint and smoke tests confirm a successful deployment.
 
-**Status:** Pending
+**Status:** Applied

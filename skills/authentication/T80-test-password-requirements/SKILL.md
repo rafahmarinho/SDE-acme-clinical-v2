@@ -61,4 +61,4 @@ def test_expired_password_forces_change(client_with_expired_user):
 - [ ] A direct GoTrue call with a 6-character password fails in the local Supabase integration test.
 - [ ] Password reuse and expiry behavior is covered by tests.
 
-**Status:** Pending
+**Status:** Applied

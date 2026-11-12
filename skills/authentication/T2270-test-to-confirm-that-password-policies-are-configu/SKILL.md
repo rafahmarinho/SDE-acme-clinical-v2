@@ -59,4 +59,4 @@ async def test_policy_bounds(client):
 - [ ] All tests pass. Each setting can be read back, is enforced, is admin-only and is bounded by safe floors.
 - [ ] An audit row exists for each policy change.
 
-**Status:** Pending
+**Status:** Applied

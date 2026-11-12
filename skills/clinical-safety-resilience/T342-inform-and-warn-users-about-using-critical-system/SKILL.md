@@ -67,4 +67,4 @@ export function CriticalActionDialog({ title, consequences, confirmWord, onConfi
 - [ ] API rejects those requests (422) without the acknowledgement fields.
 - [ ] Login shows the system-use notice and requires acceptance.
 
-**Status:** Pending
+**Status:** Applied

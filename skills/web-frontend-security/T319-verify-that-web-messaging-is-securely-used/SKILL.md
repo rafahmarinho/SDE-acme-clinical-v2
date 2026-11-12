@@ -58,4 +58,4 @@ describe("web messaging", () => {
 - [ ] Static grep check passes in CI, or the messaging vitest suite passes.
 - [ ] Look-alike origins (`<origin>.evil.com`, `evil.com?q=<origin>`, `http://` variant) are rejected.
 
-**Status:** Pending
+**Status:** Applied

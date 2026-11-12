@@ -53,4 +53,4 @@ async def test_full_break_glass_cycle(client_as, nurse_ward_a, ward_b_patient, f
 - [ ] Audit log contains every required field for the grant.
 - [ ] Documented review confirms all emergency functions are covered.
 
-**Status:** Pending
+**Status:** Applied

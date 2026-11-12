@@ -61,4 +61,4 @@ def test_direct_storage_upload_blocked(supabase_as_nurse):
 - [ ] Detection event recorded in `acme.security` / `security_events`.
 - [ ] Test runs in CI.
 
-**Status:** Pending
+**Status:** Applied

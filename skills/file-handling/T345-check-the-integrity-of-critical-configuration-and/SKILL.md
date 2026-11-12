@@ -55,4 +55,4 @@ async def load_thresholds(db, patient_id) -> dict:
 - [ ] Tampered rows trigger a security event, admin alert and safe defaults (unit test).
 - [ ] Stored file `sha256` is verified before use.
 
-**Status:** Pending
+**Status:** Applied

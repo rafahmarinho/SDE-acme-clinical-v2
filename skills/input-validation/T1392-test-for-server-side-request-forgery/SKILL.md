@@ -53,4 +53,4 @@ async def test_no_outbound_fetch(client, admin_headers, device_id, method, path,
 - [ ] Out-of-band test against staging shows no callback requests.
 - [ ] Code search finds no `httpx`/`requests` call whose URL derives from request data.
 
-**Status:** Pending
+**Status:** Applied

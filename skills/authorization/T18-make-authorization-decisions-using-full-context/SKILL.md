@@ -58,4 +58,4 @@ async def generate_patient_report(user: CurrentUser, patient_id: UUID, pool) -> 
 - [ ] RLS policies are exercised in API queries (test with RLS-only rule blocks access).
 - [ ] Transaction-local claims do not leak between pooled connections (test two sequential users on one connection).
 
-**Status:** Pending
+**Status:** Applied

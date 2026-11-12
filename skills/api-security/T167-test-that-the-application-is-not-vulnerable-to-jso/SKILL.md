@@ -55,4 +55,4 @@ def test_no_route_declares_list_response(app):
 - [ ] Every JSON response starts with `{` and has `Content-Type: application/json`.
 - [ ] `X-Content-Type-Options: nosniff` present on API responses.
 
-**Status:** Pending
+**Status:** Applied

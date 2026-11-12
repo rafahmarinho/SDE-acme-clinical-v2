@@ -48,4 +48,4 @@ the project's Redirect URLs allow-list.
 - [ ] Vitest suite for `safeNext` passes with all bypass payloads.
 - [ ] Manual login and password-recovery tests documented with no external redirection.
 
-**Status:** Pending
+**Status:** Applied

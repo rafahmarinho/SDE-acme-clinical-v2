@@ -51,4 +51,4 @@ async def test_alternative_paths(client, alt):
 - [ ] `/docs` and `/openapi.json` are unavailable in production configuration.
 - [ ] Storage objects (reports, files) cannot be fetched anonymously.
 
-**Status:** Pending
+**Status:** Applied

@@ -1,11 +1,30 @@
+# Secrets: never commit real environment files or keys (only the *.env.example placeholders).
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+
+# Python
 __pycache__/
 *.pyc
 .venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / build output
 node_modules/
 dist/
-.vercel/
 coverage/
-.pytest_cache/
+*.tsbuildinfo
+
+# Platform CLIs (local state may contain tokens or project refs)
+.vercel/
+supabase/.temp/
+supabase/.branches/

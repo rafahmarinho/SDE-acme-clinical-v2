@@ -75,4 +75,4 @@ async def test_no_forbidden_fields(api, admin):
 - [ ] Error responses contain no stack trace or SQL detail.
 - [ ] Role-specific tests show each role receives only the fields it needs.
 
-**Status:** Pending
+**Status:** Applied

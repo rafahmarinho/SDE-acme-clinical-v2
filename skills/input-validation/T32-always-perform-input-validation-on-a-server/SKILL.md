@@ -59,4 +59,4 @@ alter table observations add constraint text_len check (char_length(text) betwee
 - [ ] Direct Supabase inserts violating ranges fail on CHECK constraints.
 - [ ] Validation failure log entries include timestamp, IP, route and error code, with no submitted values.
 
-**Status:** Pending
+**Status:** Applied

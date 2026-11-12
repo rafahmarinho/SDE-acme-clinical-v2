@@ -63,4 +63,4 @@ async def accept_upload(user, data: bytes, detected_mime: str, scanner: Scanner)
 - [ ] EICAR upload rejected and logged (T107 test).
 - [ ] Scanner is injectable; production scanner choice documented in README.
 
-**Status:** Pending
+**Status:** Applied

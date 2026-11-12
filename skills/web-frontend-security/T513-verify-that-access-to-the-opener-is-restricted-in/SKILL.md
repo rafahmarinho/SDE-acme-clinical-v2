@@ -62,4 +62,4 @@ describe("opener isolation", () => {
 - [ ] vitest opener suite passes in CI.
 - [ ] Manual B.html probe shows "Safe Use!" and the opener tab is not redirected in Chrome, Firefox and Safari.
 
-**Status:** Pending
+**Status:** Applied

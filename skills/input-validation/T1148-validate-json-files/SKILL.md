@@ -57,4 +57,4 @@ def load_scenarios(path: Path) -> list[ScenarioFile]:
 - [ ] Unit tests: scenario files with unknown keys, wrong types or oversized arrays raise validation errors.
 - [ ] No code builds JSON via f-strings or template literals.
 
-**Status:** Pending
+**Status:** Applied

@@ -65,4 +65,4 @@ async def update(body: SecuritySettings, user=Depends(require_role("admin"))):
 - [ ] Changes are audited; values outside the baseline return 422.
 - [ ] Report shows a fingerprint mismatch after an unapproved change.
 
-**Status:** Pending
+**Status:** Applied

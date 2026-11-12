@@ -59,4 +59,4 @@ async def test_profile_inaccessible_after_logout(client, nurse):
 - [ ] `/me` returns 401 after logout; profile route redirects to login.
 - [ ] Tests above pass in CI.
 
-**Status:** Pending
+**Status:** Applied

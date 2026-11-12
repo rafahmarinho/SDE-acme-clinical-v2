@@ -63,4 +63,4 @@ async def test_role_enforced_for_every_verb(api, nurse):
 - [ ] Method-override headers are rejected; role checks apply to every verb.
 - [ ] Tests run in CI.
 
-**Status:** Pending
+**Status:** Applied

@@ -55,4 +55,4 @@ async def test_scenario_param_is_enum(client, admin_headers):
 - [ ] `backend/tests/test_file_include.py` passes.
 - [ ] Manual check on the Vercel deployments shows SSI directives rendered as text.
 
-**Status:** Pending
+**Status:** Applied

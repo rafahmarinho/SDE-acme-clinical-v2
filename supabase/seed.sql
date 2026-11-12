@@ -1,7 +1,8 @@
 -- ACME Clinical demo data: 2 wards, 14 beds, 12 FICTITIOUS patients, 10 simulated monitors.
--- No staff accounts or passwords are seeded. Demo staff are created with
+-- No staff accounts or passwords are seeded (nothing is written to the auth schema here). Demo staff are created with
 --   python -m app.cli create-demo-staff
--- which uses the Supabase Admin API, generates a unique random password per account and prints it once.
+-- which uses the Supabase Admin API, creates one personal account per fictional person (no shared or
+-- role-named logins), generates a unique random password per account and prints it once.
 
 insert into public.wards (id, code, name) values
   ('00000000-0000-4000-8000-000000000001', 'ICU-A', 'Intensive Care A'),
@@ -24,7 +25,10 @@ from (values
 ) as p(pseudonym, display_name, birth_year, bed_label)
 join public.beds b on b.label = p.bed_label;
 
--- Each simulated monitor gets a random device secret; only its SHA-256 is stored.
+-- Each simulated monitor gets a random device secret; only its SHA-256 is stored and the secret itself is
+-- discarded, so no monitor can be paired until an operator issues pairing codes with
+--   python -m app.cli provision-monitor-secrets
+-- (no default device credentials).
 insert into public.monitors (serial, model, device_secret_hash, battery_pct, last_heartbeat_at)
 select 'MON-' || lpad(g::text, 4, '0'), case when g % 2 = 0 then 'VitalView 300' else 'VitalView 500' end,
        digest(gen_random_bytes(32), 'sha256'), 100, now()

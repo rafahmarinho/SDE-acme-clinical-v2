@@ -57,4 +57,4 @@ async def test_removal_with_password_erases_personal_data(client, nurse, db, sto
 - [ ] After removal, profile, auth user and Storage files are gone and old sessions are rejected.
 - [ ] A deletion log entry with no personal data exists.
 
-**Status:** Pending
+**Status:** Applied

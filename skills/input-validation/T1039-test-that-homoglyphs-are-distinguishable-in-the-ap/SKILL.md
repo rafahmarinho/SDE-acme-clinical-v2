@@ -65,4 +65,4 @@ it("distinguishes IDN email", () => {
 - [ ] Backend and vitest homoglyph tests pass.
 - [ ] Manual review documented for staff list, audit history and report outputs.
 
-**Status:** Pending
+**Status:** Applied

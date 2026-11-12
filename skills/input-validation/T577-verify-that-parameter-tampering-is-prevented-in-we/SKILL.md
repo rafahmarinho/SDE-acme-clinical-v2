@@ -55,4 +55,4 @@ def test_request_schemas_are_strict():
 - [ ] `test_openapi_strictness.py` passes with zero untyped, unbounded or open request schemas.
 - [ ] Tampered requests (wrong type, unknown enum, extra field) return 422 for every write endpoint.
 
-**Status:** Pending
+**Status:** Applied

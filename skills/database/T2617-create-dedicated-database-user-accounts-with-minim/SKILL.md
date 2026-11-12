@@ -52,4 +52,4 @@ grant usage on all sequences in schema clinical, devices, simulation, audit to a
 - [ ] `acme_api` has no DELETE/TRUNCATE/DDL privileges (pgTAP test from T227).
 - [ ] Backend connects successfully as `acme_api` and all API tests pass.
 
-**Status:** Pending
+**Status:** Applied

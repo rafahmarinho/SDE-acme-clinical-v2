@@ -52,4 +52,4 @@ async def test_cookie_scope(api, demo_credentials):
 - [ ] Paths match the documented allow-list.
 - [ ] CI grep check and pytest pass.
 
-**Status:** Pending
+**Status:** Applied

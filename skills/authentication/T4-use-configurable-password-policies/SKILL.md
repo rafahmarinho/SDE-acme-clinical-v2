@@ -67,4 +67,4 @@ def violations(pw: str, policy: PasswordPolicy, context: list[str]) -> list[str]
 - [ ] `backend/tests/test_password_policy.py` checks that changing `min_length` from 12 to 16 makes a 14-character password fail on the next change, and that passwords containing the user's email local part are rejected.
 - [ ] Supabase `minimum_password_length` is at least 12 in `supabase/config.toml`.
 
-**Status:** Pending
+**Status:** Applied

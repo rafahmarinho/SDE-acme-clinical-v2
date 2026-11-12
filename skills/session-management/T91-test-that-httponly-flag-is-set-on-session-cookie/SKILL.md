@@ -58,4 +58,4 @@ test("no JS-readable auth cookie after login", async ({ page, context }) => {
 - [ ] Every session/refresh cookie in `Set-Cookie` responses contains `HttpOnly`.
 - [ ] Both tests run in CI.
 
-**Status:** Pending
+**Status:** Applied

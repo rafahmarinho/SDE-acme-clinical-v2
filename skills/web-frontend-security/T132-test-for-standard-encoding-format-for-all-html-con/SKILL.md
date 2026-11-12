@@ -57,4 +57,4 @@ it("index.html declares UTF-8 first in head", () => {
 - [ ] pytest and vitest charset tests pass.
 - [ ] Sampled deployed pages and exports all declare UTF-8.
 
-**Status:** Pending
+**Status:** Applied

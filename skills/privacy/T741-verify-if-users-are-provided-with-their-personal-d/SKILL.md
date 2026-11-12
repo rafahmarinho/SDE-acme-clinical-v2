@@ -54,4 +54,4 @@ async def test_export_requires_reauth_and_is_scoped(client, nurse, physician):
 - [ ] Export without re-authentication is rejected; no cross-user data.
 - [ ] Frontend test confirms the "Export my data" control exists on the profile screen.
 
-**Status:** Pending
+**Status:** Applied

@@ -60,4 +60,4 @@ class StaffCreate(StrictModel):
 - [ ] Tests: `hr_low=300`, `spo2_low=-1`, `hr_low > hr_high`, unknown role all return 422.
 - [ ] Validation failures are logged with timestamp, route and client IP (no sensitive values).
 
-**Status:** Pending
+**Status:** Applied

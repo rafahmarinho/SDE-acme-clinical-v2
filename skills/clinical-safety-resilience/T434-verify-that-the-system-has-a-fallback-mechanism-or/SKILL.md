@@ -56,4 +56,4 @@ it("falls back to polling when realtime fails", async () => {
 - [ ] Load test shows alarm endpoints stay responsive while reports are shed.
 - [ ] Banner visible during outages (E2E screenshot assertion).
 
-**Status:** Pending
+**Status:** Applied

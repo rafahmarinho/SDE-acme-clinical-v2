@@ -60,4 +60,4 @@ export default [{
 - [ ] `index.html` has only `type="module"` scripts; ESLint passes with the strict rules.
 - [ ] Verified by T329.
 
-**Status:** Pending
+**Status:** Applied

@@ -52,4 +52,4 @@ describe("CSTI", () => {
 - [ ] Vitest CSTI suite passes for all user-content components.
 - [ ] Manual check documented: stored payloads display literally on every screen.
 
-**Status:** Pending
+**Status:** Applied

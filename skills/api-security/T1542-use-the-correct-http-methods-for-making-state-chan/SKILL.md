@@ -59,4 +59,4 @@ def test_get_routes_are_read_only(app):
 - [ ] Logout, alarm acknowledgement, binding, observations, thresholds and simulation actions use POST/PUT/PATCH/DELETE.
 - [ ] GET handlers run in read-only transactions.
 
-**Status:** Pending
+**Status:** Applied

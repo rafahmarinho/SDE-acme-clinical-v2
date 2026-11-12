@@ -63,4 +63,4 @@ class AlarmPriority(IntEnum):
 - [ ] Under induced load, SUPERVISORY requests return 503 before any EMERGENCY_SAFETY request is delayed.
 - [ ] Alarms are sorted and displayed by `AlarmPriority`, with tests for the mapping of each scenario.
 
-**Status:** Pending
+**Status:** Applied

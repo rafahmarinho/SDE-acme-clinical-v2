@@ -56,4 +56,4 @@ async def test_limits(client, admin_headers, seeded_10k_events, patient_id, path
 - [ ] Requests with `limit` above the maximum return 422; default responses return at most 100 items.
 - [ ] Report generation over the allowed range returns a clear error and writes nothing.
 
-**Status:** Pending
+**Status:** Applied

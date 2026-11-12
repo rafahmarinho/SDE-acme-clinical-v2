@@ -66,4 +66,4 @@ class ObservationIn(BaseModel):
 - [ ] Load test report shows large payloads do not break or slow the service.
 - [ ] Simulated integration responses are size-capped.
 
-**Status:** Pending
+**Status:** Applied

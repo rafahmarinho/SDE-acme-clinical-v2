@@ -63,4 +63,4 @@ export const searchPatients = (text: string, wardId?: string) =>
 - [ ] SPA routes and history contain only UUIDs; after password recovery the URL no longer contains tokens.
 - [ ] `Referrer-Policy` header is present on the frontend.
 
-**Status:** Pending
+**Status:** Applied

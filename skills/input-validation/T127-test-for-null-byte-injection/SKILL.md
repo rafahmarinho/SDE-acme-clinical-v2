@@ -58,4 +58,4 @@ async def test_text_field_null(client, nurse_headers, patient_id):
 - [ ] No endpoint returns 500 for a NUL-containing input.
 - [ ] Storage object names never contain client-supplied path segments.
 
-**Status:** Pending
+**Status:** Applied

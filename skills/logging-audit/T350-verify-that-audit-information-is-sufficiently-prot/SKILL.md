@@ -63,4 +63,4 @@ def test_simulation_reset_preserves_audit(api_client, admin_token, audit_count):
 - [ ] Unauthorized roles get zero audit rows.
 - [ ] Simulation reset leaves prior audit rows intact and adds one reset event.
 
-**Status:** Pending
+**Status:** Applied

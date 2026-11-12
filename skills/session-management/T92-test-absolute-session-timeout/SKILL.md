@@ -48,4 +48,4 @@ async def test_refresh_does_not_extend_lifetime(api, nurse, freeze_time):
 - [ ] Refreshed tokens of an expired session are rejected by the API.
 - [ ] Staging keep-alive script documents the exact cut-off time.
 
-**Status:** Pending
+**Status:** Applied

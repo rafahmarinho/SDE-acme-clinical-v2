@@ -66,4 +66,4 @@ frontend/vercel.json (excerpt): index.html must not be cached; hashed assets may
 - [ ] `index.html` from the frontend deployment returns `Cache-Control: no-store`.
 - [ ] `backend/tests/test_cache_headers.py` asserts the headers on `/api/patients`, `/api/alarms`, `/api/reports` and an error response.
 
-**Status:** Pending
+**Status:** Applied

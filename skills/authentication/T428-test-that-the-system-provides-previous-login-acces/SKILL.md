@@ -59,4 +59,4 @@ async def test_other_users_history_not_readable(client_for, user, other_user):
 - [ ] All tests above pass in CI.
 - [ ] A manual multi-browser test record shows correct dates, devices and the failed count.
 
-**Status:** Pending
+**Status:** Applied

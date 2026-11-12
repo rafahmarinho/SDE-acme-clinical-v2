@@ -65,4 +65,4 @@ async def probe(url: str, token: str | None, n_ms: int, count: int = 300, ip: st
 - [ ] Spoofed `X-Forwarded-For` does not reset the bucket.
 - [ ] Rate-limit tests run in CI.
 
-**Status:** Pending
+**Status:** Applied

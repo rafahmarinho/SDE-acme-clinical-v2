@@ -61,4 +61,4 @@ VITE_API_BASE_URL=https://<api-project>.vercel.app
 - [ ] Built frontend bundle contains no service role key (grep test in CI).
 - [ ] README documents where each secret is configured.
 
-**Status:** Pending
+**Status:** Applied

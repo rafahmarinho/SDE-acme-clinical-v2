@@ -68,4 +68,4 @@ useEffect(() => {
 - [ ] Load test of 500 requests keeps Postgres connections ≤ pool max.
 - [ ] Vitest: unmounting live monitoring components calls `removeChannel` and clears intervals.
 
-**Status:** Pending
+**Status:** Applied

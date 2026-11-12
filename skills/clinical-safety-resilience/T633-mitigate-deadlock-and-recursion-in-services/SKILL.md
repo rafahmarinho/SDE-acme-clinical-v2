@@ -65,4 +65,4 @@ end $$;
 - [ ] Stress test interleaving ticks, acks and bindings completes with no unhandled deadlock and bounded retries.
 - [ ] Trigger recursion test (update in trigger context) terminates.
 
-**Status:** Pending
+**Status:** Applied

@@ -58,4 +58,4 @@ async def transition(db, run_id: str, action: str, user_id: str, expected_step: 
 - [ ] Binding is atomic and rejects occupied beds/monitors.
 - [ ] Verified by T142 tests.
 
-**Status:** Pending
+**Status:** Applied

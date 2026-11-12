@@ -68,4 +68,4 @@ def display_name(raw: str) -> str:
 - [ ] Integration test: anonymous/public URL fetch fails; signed URL works then expires.
 - [ ] Test: an uploaded name like `../../evil.html` is stored with a random key and sanitized display name.
 
-**Status:** Pending
+**Status:** Applied

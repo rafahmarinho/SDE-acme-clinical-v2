@@ -63,4 +63,4 @@ async def test_transaction_audited(method, path, body, action, ids, nurse, audit
 - [ ] Test fails if any required field is null for a transaction.
 - [ ] Failure outcomes are audited with an error code.
 
-**Status:** Pending
+**Status:** Applied

@@ -59,4 +59,4 @@ async def test_audit_report_forbidden_for_nurse(nurse_token):
 - [ ] Test fails if the report endpoint is missing, mutates rows, or changes ordering.
 - [ ] Frontend vitest confirms event text is rendered escaped.
 
-**Status:** Pending
+**Status:** Applied

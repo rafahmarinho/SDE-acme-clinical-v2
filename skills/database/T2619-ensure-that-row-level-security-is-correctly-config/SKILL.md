@@ -65,4 +65,4 @@ alter role acme_api nobypassrls; alter role acme_simulator nobypassrls;
 - [ ] Nurse in Ward A gets zero rows / zero Realtime events for Ward B patients.
 - [ ] `acme_api`, `acme_simulator`, `authenticated`, `anon` all report `rolbypassrls = false`.
 
-**Status:** Pending
+**Status:** Applied

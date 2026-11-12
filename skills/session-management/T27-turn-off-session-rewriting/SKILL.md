@@ -57,4 +57,4 @@ async def verify_supabase_jwt(request: Request, cred=Depends(bearer)) -> Claims:
 - [ ] Recovery `code` is removed from the address bar after exchange and cannot be reused.
 - [ ] Tests in `backend/tests/test_token_in_url.py` (see T94).
 
-**Status:** Pending
+**Status:** Applied

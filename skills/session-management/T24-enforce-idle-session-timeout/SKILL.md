@@ -63,4 +63,4 @@ if now - sess.last_activity_at > idle:
 - [ ] Unlock requires password re-entry; the old refresh token is unusable.
 - [ ] Tests: `frontend/src/hooks/useIdleLock.test.ts` (vitest fake timers) and `backend/tests/test_idle_timeout.py` (see T90).
 
-**Status:** Pending
+**Status:** Applied

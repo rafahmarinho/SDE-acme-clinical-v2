@@ -62,4 +62,4 @@ async def test_country_jump_flagged(client_as, ids):
 - [ ] Each held/blocked action appears in the audit log with reason.
 - [ ] CSP header present on the deployed frontend (manual check recorded).
 
-**Status:** Pending
+**Status:** Applied

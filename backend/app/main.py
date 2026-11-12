@@ -1,8 +1,10 @@
 """FastAPI application factory.
 
 Registers routers, CORS (explicit allow-list from settings), security-header / body-size /
-rate-limit middleware and global exception handlers. Interactive API docs are disabled in
-production (secure default).
+rate-limit middleware and global exception handlers. Secure defaults (T2349): interactive API docs
+and the OpenAPI schema exist only with APP_ENV=development (or ENABLE_DOCS outside production), debug is
+always off, CORS allows only the configured exact origins, and a production start-up refuses to serve if
+any route lacks authentication/authorization (deny by default).
 """
 
 from contextlib import asynccontextmanager
@@ -15,12 +17,15 @@ from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import BodySizeLimitMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
+from app.core.security import assert_routes_protected
 from app.routers import (alarms, auth, break_glass, events, files, maintenance, monitors, observations, patients, profile,
                          reports, settings as settings_router, simulation, staff, thresholds, wards)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
+    if get_settings().is_production:
+        assert_routes_protected(app, production=True)  # fail closed: never serve an unprotected route
     await db.open_pool()
     try:
         yield
@@ -35,9 +40,9 @@ def create_app() -> FastAPI:
         title="ACME Clinical API",
         version="1.0.0",
         lifespan=lifespan,
-        docs_url=None if settings.is_production else "/docs",
+        docs_url="/docs" if settings.docs_enabled else None,
         redoc_url=None,
-        openapi_url=None if settings.is_production else "/openapi.json",
+        openapi_url="/openapi.json" if settings.docs_enabled else None,
         debug=False,
     )
     install_error_handlers(app)

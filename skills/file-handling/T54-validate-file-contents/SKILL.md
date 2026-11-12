@@ -71,4 +71,4 @@ async def read_and_validate(file: UploadFile) -> tuple[bytes, str]:
 - [ ] Unit tests: truncated PNG, HTML renamed `.jpg`, PDF with `/JavaScript`, oversized file all rejected.
 - [ ] T129 spoofing test passes.
 
-**Status:** Pending
+**Status:** Applied

@@ -64,4 +64,4 @@ async def advance(pool, steps: int, actor: CurrentUser):
 - [ ] Two concurrent `advance` calls: one succeeds, one gets 409; reset during a tick waits and completes consistently.
 - [ ] Concurrent binding of the same monitor to two beds yields exactly one success.
 
-**Status:** Pending
+**Status:** Applied

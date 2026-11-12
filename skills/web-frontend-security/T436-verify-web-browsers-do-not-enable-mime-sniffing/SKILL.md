@@ -50,4 +50,4 @@ done
 - [ ] pytest header suite passes.
 - [ ] Smoke check reports `nosniff` on frontend HTML, JS assets and API responses after each deploy.
 
-**Status:** Pending
+**Status:** Applied

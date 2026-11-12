@@ -59,4 +59,4 @@ async def test_no_state_change_via_get(client, path, auth_headers):
 - [ ] `backend/tests/test_csrf.py` passes for every high-value action.
 - [ ] Manual cross-origin form/fetch attempt produces no state change (verify via simulation events log).
 
-**Status:** Pending
+**Status:** Applied

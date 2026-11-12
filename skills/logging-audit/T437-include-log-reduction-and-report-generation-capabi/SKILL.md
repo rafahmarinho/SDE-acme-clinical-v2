@@ -59,4 +59,4 @@ async def audit_summary(db, q: AuditQuery) -> dict:
 - [ ] Source `audit_events` row count, hashes and order are unchanged after report generation (test).
 - [ ] Events containing `<script>` or `=cmd|` render/export inertly.
 
-**Status:** Pending
+**Status:** Applied

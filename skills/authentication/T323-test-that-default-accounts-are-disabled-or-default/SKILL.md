@@ -62,4 +62,4 @@ def test_demo_accounts_disabled_in_production(admin_api):
 - [ ] No common or default password authenticates any demo or admin account. Demo accounts are banned in production.
 - [ ] Deployed environments do not use the Supabase local demo keys.
 
-**Status:** Pending
+**Status:** Applied

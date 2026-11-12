@@ -61,4 +61,4 @@ def test_reset_disabled_by_default(prod_client, admin_token):
 - [ ] Deployed configuration matches the documented baseline.
 - [ ] Configuration document is complete and under version control.
 
-**Status:** Pending
+**Status:** Applied

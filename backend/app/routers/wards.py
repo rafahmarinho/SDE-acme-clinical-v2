@@ -1,4 +1,9 @@
-"""API router: wards overview."""
+"""API router: wards overview.
+
+Scope is decided in SQL by the shared helpers (no role literals here): staff see the wards they are
+assigned to (administrators all wards, via can_access_ward); device custodians (maintenance:write) see
+every ward because monitors move between wards. Counts are computed under RLS for the caller.
+"""
 
 from typing import Annotated
 
@@ -21,6 +26,6 @@ async def list_wards(principal: Annotated[Principal, Depends(require(Perm.ALARM_
                    (select count(*) from public.alarms a join public.patients p on p.id = a.patient_id
                      where p.ward_id = w.id and a.state = 'active')::int as active_alarms
             from public.wards w
-            where public.can_access_ward(w.id) or public.current_staff_role() = 'biomed_tech'
+            where public.can_access_ward(w.id) or public.has_permission('maintenance:write')
             order by w.code""")
     return [WardOut(**r) for r in rows]

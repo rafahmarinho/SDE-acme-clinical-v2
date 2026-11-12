@@ -54,4 +54,4 @@ response.headers["X-XSS-Protection"] = "0"  # legacy filter disabled; CSP is the
 - [ ] The production app (login, live monitoring via Realtime, reports download, 3D view) works with zero CSP violations in the console.
 - [ ] API responses carry `default-src 'none'; frame-ancestors 'none'`; verified by T332 tests.
 
-**Status:** Pending
+**Status:** Applied

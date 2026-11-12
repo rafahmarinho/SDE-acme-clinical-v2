@@ -57,4 +57,4 @@ def create_exclusive(dirpath: str, name: str):
 - [ ] Unit test: `open_no_follow` raises on a symlink and on a hard-linked file (see T595).
 - [ ] Report generation works with in-memory buffers or private temp dirs only.
 
-**Status:** Pending
+**Status:** Applied

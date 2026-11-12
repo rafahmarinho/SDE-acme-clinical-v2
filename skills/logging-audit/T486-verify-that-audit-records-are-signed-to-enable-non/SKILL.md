@@ -61,4 +61,4 @@ def test_tampered_row_detected(sealed_ack_row, audit_public_key):
 - [ ] Tamper and deletion tests fail verification as expected.
 - [ ] Algorithm and key ID documented in README security section.
 
-**Status:** Pending
+**Status:** Applied

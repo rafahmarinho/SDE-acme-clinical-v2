@@ -61,4 +61,4 @@ async def test_cannot_bind_unregistered_monitor(nurse_client):
 - [ ] All device-authenticity tests pass: valid accepted, and tampered, wrong-key, unknown, stale, replayed and retired rejected.
 - [ ] Unregistered monitors cannot be bound to beds, and rejected attempts are audit-logged.
 
-**Status:** Pending
+**Status:** Applied

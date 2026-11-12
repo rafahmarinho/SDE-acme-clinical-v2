@@ -59,4 +59,4 @@ async def delete_my_account(body: DeleteRequest, user=Depends(current_user)):
 - [ ] Administrators can deactivate/erase staff; other roles get 403.
 - [ ] Tests from T240 pass; log output contains no email/name for these operations.
 
-**Status:** Pending
+**Status:** Applied

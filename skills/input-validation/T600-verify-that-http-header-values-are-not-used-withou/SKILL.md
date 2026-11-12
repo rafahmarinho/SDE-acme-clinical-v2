@@ -57,4 +57,4 @@ async def test_header_not_reflected(client, nurse_headers):
 - [ ] `backend/tests/test_header_trust.py` passes.
 - [ ] Code review checklist entry confirms no header-derived values in links, auth or output.
 
-**Status:** Pending
+**Status:** Applied

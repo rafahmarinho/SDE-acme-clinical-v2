@@ -56,4 +56,4 @@ export function RequireAuth({ perm, children }: { perm?: Perm; children: ReactNo
 - [ ] Anonymous Supabase client query on any table returns zero rows / permission denied.
 - [ ] Unauthenticated visit to any protected screen redirects to login.
 
-**Status:** Pending
+**Status:** Applied

@@ -46,4 +46,4 @@ comment on column public.monitors.battery_level is 'class=public-operational';
 - [ ] Classification policy is linked from README.
 - [ ] T314 verification test passes.
 
-**Status:** Pending
+**Status:** Applied

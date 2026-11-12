@@ -55,4 +55,4 @@ def set_refresh_cookie(resp: Response, opaque_refresh_token: str) -> None:
 - [ ] Changing any cookie value cannot change the user's role or visible data (server-side authorization only).
 - [ ] Verified by T1093.
 
-**Status:** Pending
+**Status:** Applied

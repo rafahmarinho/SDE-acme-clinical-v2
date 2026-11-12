@@ -53,4 +53,4 @@ it("cannot submit profile data without acknowledging the notice", async () => {
 - [ ] Declining optional fields does not block account use.
 - [ ] `consents` rows store notice version and timestamp.
 
-**Status:** Pending
+**Status:** Applied

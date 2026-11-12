@@ -56,4 +56,4 @@ async def test_detection_points_logged(caplog, nurse_token, other_ward_patient_i
 - [ ] All security events carry UTC ISO-8601 timestamps with milliseconds.
 - [ ] Gaps (e.g. Supabase-side auth events) documented with where they are observed.
 
-**Status:** Pending
+**Status:** Applied

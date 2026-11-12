@@ -63,4 +63,4 @@ def test_dsn_not_logged(caplog, monkeypatch):
 - [ ] Frontend build grep finds no service-role key or PostgreSQL DSN.
 - [ ] Code search shows no DSN built with f-strings from request input.
 
-**Status:** Pending
+**Status:** Applied

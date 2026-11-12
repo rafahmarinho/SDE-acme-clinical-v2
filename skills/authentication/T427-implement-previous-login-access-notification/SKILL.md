@@ -60,4 +60,4 @@ async def session_start(request: Request, claims=Depends(verify_supabase_jwt)):
 - [ ] After login, the banner shows the last N successful logins (date, time, location, device) and the count of failed attempts since the last success. N is configurable.
 - [ ] Password, email, MFA and role changes trigger a notification to the user's email (`backend/tests/test_login_notifications.py`).
 
-**Status:** Pending
+**Status:** Applied

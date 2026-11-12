@@ -1,41 +1,43 @@
 """Pydantic request/response schemas with strict types and field constraints.
 
-* Request models forbid unknown fields (`extra="forbid"`), so clients cannot smuggle read-only
-  attributes such as `role`, `author_id` or `acknowledged_by`.
-* Free text is length-bounded and stripped of control characters; identifiers are UUIDs.
-* Response models list exactly the fields the UI needs (no secrets, hashes or internal columns).
+* Request models (`Strict`) forbid unknown fields (`extra="forbid"`, i.e. `additionalProperties: false`
+  in the OpenAPI contract), so clients cannot smuggle read-only attributes such as `role`,
+  `author_id` or `acknowledged_by`; server-owned values come from the verified session (T33, T569).
+* Every request field is typed and bounded: strings have a max length and a character policy,
+  numbers are strict (no "40"/40.0/true coercion) with min/max, lists have max items, choices are
+  enums (T31, T34, T537, T569).
+* Free text is NFC-normalised and refuses NUL/control/bidi/zero-width characters; names are
+  single-script letter allow-lists (anti-homoglyph); staff e-mails are ASCII (T34, T127, T1038).
+* Response models list exactly the fields the UI needs (no secrets, hashes or internal columns),
+  and every collection is returned inside the `Page` object envelope, never as a top-level JSON
+  array (T167, T2140).
 """
 
 from __future__ import annotations
 
-import re
-import unicodedata
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated, Generic, TypeVar
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, StrictBool, model_validator
 
-_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f​-‏‪-‮⁦-⁩]")
+from app.core.validation import ascii_email, clean_text, person_name, single_line
 
+CleanText = Annotated[str, AfterValidator(clean_text)]
+ShortText = Annotated[str, Field(min_length=1, max_length=120), AfterValidator(single_line)]
+SearchText = Annotated[str, Field(max_length=60), AfterValidator(single_line)]
+PersonName = Annotated[str, Field(min_length=1, max_length=120), AfterValidator(person_name)]
+StaffEmail = Annotated[EmailStr, Field(max_length=254), AfterValidator(ascii_email)]
 
-def _clean_text(value: str) -> str:
-    value = unicodedata.normalize("NFC", value)
-    if _CONTROL.search(value):
-        raise ValueError("contains control or invisible formatting characters")
-    return value.strip()
-
-
-def _single_line(value: str) -> str:
-    if "\n" in value or "\r" in value:
-        raise ValueError("must be a single line")
-    return value
+# Largest page any list endpoint may return (result-set size bound, T2609).
+MAX_PAGE_SIZE = 100
+MAX_OFFSET = 10_000
 
 
-CleanText = Annotated[str, AfterValidator(_clean_text)]
-ShortText = Annotated[str, Field(min_length=1, max_length=120), AfterValidator(_clean_text), AfterValidator(_single_line)]
-SearchText = Annotated[str, Field(max_length=60), AfterValidator(_clean_text), AfterValidator(_single_line)]
+def bounded_int(ge: int, le: int):
+    """Strict integer (JSON numbers only: no strings, floats or booleans) within [ge, le]."""
+    return Annotated[int, Field(strict=True, ge=ge, le=le)]
 
 
 class Strict(BaseModel):
@@ -50,6 +52,8 @@ T = TypeVar("T")
 
 
 class Page(Out, Generic[T]):
+    """Collection envelope: always a JSON object (anti JSON-hijacking) with a bounded `items` list."""
+
     items: list[T]
     next_offset: int | None = None
 
@@ -101,7 +105,7 @@ class Me(Out):
 
 
 class ProfileUpdate(Strict):
-    full_name: ShortText
+    full_name: PersonName
 
 
 class ProfileExport(Out):
@@ -189,9 +193,9 @@ class ThresholdOut(Out):
 
 class ThresholdUpdate(Strict):
     parameter: VitalParameter
-    low_limit: Annotated[int, Field(ge=0, le=300)]
-    high_limit: Annotated[int, Field(ge=0, le=300)]
-    confirm: bool = Field(description="Must be true: the user confirmed the change to a clinical alarm limit.")
+    low_limit: bounded_int(0, 300)
+    high_limit: bounded_int(0, 300)
+    confirm: StrictBool = Field(description="Must be true: the user confirmed the change to a clinical alarm limit.")
 
     @model_validator(mode="after")
     def _plausible(self) -> ThresholdUpdate:
@@ -219,7 +223,7 @@ class MonitorOut(Out):
 
 class AssignMonitor(Strict):
     bed_id: UUID
-    confirm: bool
+    confirm: StrictBool
 
     @model_validator(mode="after")
     def _confirmed(self) -> AssignMonitor:
@@ -240,6 +244,14 @@ class MaintenanceIn(Strict):
     kind: MaintenanceKind
     notes: Annotated[CleanText, Field(max_length=1000)] = ""
     next_due: date | None = None
+
+    @model_validator(mode="after")
+    def _plausible_due_date(self) -> MaintenanceIn:
+        if self.next_due is not None:
+            today = datetime.now(UTC).date()
+            if not (today <= self.next_due <= today + timedelta(days=5 * 366)):
+                raise ValueError("next_due must be between today and five years from now")
+        return self
 
 
 class MaintenanceOut(Out):
@@ -264,15 +276,15 @@ class StaffOut(Out):
 
 
 class StaffInvite(Strict):
-    email: EmailStr
-    full_name: ShortText
+    email: StaffEmail
+    full_name: PersonName
     role: RoleName
     ward_ids: Annotated[list[UUID], Field(max_length=10)] = []
 
 
 class StaffUpdate(Strict):
     role: RoleName | None = None
-    is_active: bool | None = None
+    is_active: StrictBool | None = None
     ward_ids: Annotated[list[UUID], Field(max_length=10)] | None = None
 
 
@@ -290,14 +302,14 @@ class SecuritySettingsOut(Out):
 
 
 class SecuritySettingsUpdate(Strict):
-    password_min_length: Annotated[int, Field(ge=12, le=128)] | None = None
-    session_idle_minutes: Annotated[int, Field(ge=5, le=60)] | None = None
-    session_absolute_hours: Annotated[int, Field(ge=1, le=24)] | None = None
-    max_concurrent_sessions: Annotated[int, Field(ge=1, le=10)] | None = None
-    lockout_threshold: Annotated[int, Field(ge=3, le=10)] | None = None
-    lockout_minutes: Annotated[int, Field(ge=5, le=120)] | None = None
-    require_mfa_for_admin: bool | None = None
-    data_retention_days: Annotated[int, Field(ge=30, le=3650)] | None = None
+    password_min_length: bounded_int(12, 128) | None = None
+    session_idle_minutes: bounded_int(5, 60) | None = None
+    session_absolute_hours: bounded_int(1, 24) | None = None
+    max_concurrent_sessions: bounded_int(1, 10) | None = None
+    lockout_threshold: bounded_int(3, 10) | None = None
+    lockout_minutes: bounded_int(5, 120) | None = None
+    require_mfa_for_admin: StrictBool | None = None
+    data_retention_days: bounded_int(30, 3650) | None = None
 
 
 # ---------- simulation / events / break glass / files ----------
@@ -314,12 +326,12 @@ class SimulationScenarioIn(Strict):
 
 
 class SimulationAdvanceIn(Strict):
-    steps: Annotated[int, Field(ge=1, le=60)] = 1
-    expected_version: int
+    steps: bounded_int(1, 60) = 1
+    expected_version: bounded_int(0, 2_147_483_647)
 
 
 class SimulationResetIn(Strict):
-    confirm_text: str
+    confirm_text: Annotated[str, Field(max_length=40)]
 
     @model_validator(mode="after")
     def _typed(self) -> SimulationResetIn:

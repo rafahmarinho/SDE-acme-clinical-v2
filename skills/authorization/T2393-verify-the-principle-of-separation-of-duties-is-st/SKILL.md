@@ -57,4 +57,4 @@ async def test_two_person_rule(client_as, admin_a, admin_b, nurse):
 - [ ] Self-promotion and self-approval return 403.
 - [ ] `staff.role` is a single non-null enum column; audit table is append-only.
 
-**Status:** Pending
+**Status:** Applied

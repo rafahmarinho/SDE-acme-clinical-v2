@@ -55,4 +55,4 @@ def test_no_role_comparisons_outside_security_module():
 - [ ] Code review checklist entry "authorization via central module" is part of the PR template.
 - [ ] RLS policies reference only helper functions (pgTAP or grep check over `supabase/migrations`).
 
-**Status:** Pending
+**Status:** Applied

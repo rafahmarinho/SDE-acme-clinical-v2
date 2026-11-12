@@ -56,4 +56,4 @@ rollback;
 - [ ] Granularity: each role has only the permissions listed in the matrix (exact-set assertion).
 - [ ] Python/SQL matrix parity test passes.
 
-**Status:** Pending
+**Status:** Applied

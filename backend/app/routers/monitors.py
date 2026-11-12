@@ -1,16 +1,21 @@
-"""API router: monitors (devices) and monitor-to-bed binding."""
+"""API router: monitors (devices) and monitor-to-bed binding.
+
+Binding is a state change and therefore POST (bind) / DELETE (unbind), never GET (T1542). The
+request carries only the bed pointer and an explicit confirmation; who bound it and when are
+taken from the verified session and the database (T33).
+"""
 
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from psycopg.errors import UniqueViolation
 
 from app.core.audit import record_event
 from app.core.errors import DomainError
 from app.core.security import Perm, Principal, require
 from app.db import fetch_all, fetch_one, transaction
-from app.schemas import AssignMonitor, MonitorOut
+from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, AssignMonitor, MonitorOut, Page
 
 router = APIRouter(prefix="/v1/monitors", tags=["monitors"])
 
@@ -23,11 +28,14 @@ _SELECT = """
 """
 
 
-@router.get("", response_model=list[MonitorOut])
-async def list_monitors(principal: Annotated[Principal, Depends(require(Perm.DEVICE_READ))]) -> list[MonitorOut]:
+@router.get("", response_model=Page[MonitorOut])
+async def list_monitors(principal: Annotated[Principal, Depends(require(Perm.DEVICE_READ))],
+                        limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = MAX_PAGE_SIZE,
+                        offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0) -> Page[MonitorOut]:
     async with transaction(principal) as conn:
-        rows = await fetch_all(conn, _SELECT + " order by m.serial")
-    return [MonitorOut(**r) for r in rows]
+        rows = await fetch_all(conn, _SELECT + " order by m.serial, m.id limit %s offset %s", (limit + 1, offset))
+    return Page[MonitorOut](items=[MonitorOut(**r) for r in rows[:limit]],
+                            next_offset=offset + limit if len(rows) > limit else None)
 
 
 @router.post("/{monitor_id}/assignment", response_model=MonitorOut)

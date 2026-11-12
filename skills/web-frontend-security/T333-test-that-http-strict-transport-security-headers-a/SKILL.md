@@ -54,4 +54,4 @@ done
 - [ ] pytest HSTS test passes.
 - [ ] Smoke check passes for both Vercel hosts (HSTS present, HTTP redirects to HTTPS).
 
-**Status:** Pending
+**Status:** Applied

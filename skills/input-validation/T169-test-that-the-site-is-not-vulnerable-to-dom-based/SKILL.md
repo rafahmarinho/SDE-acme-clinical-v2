@@ -53,4 +53,4 @@ it("renders error_description from the URL as text", () => {
 - [ ] `check-dom-sinks` CI step passes with zero offenders (or each one is reviewed and justified with sanitization).
 - [ ] Vitest DOM-XSS tests for login, password reset and filtered list screens pass.
 
-**Status:** Pending
+**Status:** Applied

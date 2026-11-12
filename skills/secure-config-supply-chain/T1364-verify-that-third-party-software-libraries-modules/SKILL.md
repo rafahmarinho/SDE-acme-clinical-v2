@@ -50,4 +50,4 @@ pip-licenses --from=mixed --format=json > artifacts/backend-licenses.json
 - [ ] Component inventory current and documented.
 - [ ] Service role key confined to the backend; frontend bundle grep is clean.
 
-**Status:** Pending
+**Status:** Applied

@@ -52,4 +52,4 @@ def test_lockout_after_five_failures():
 - [ ] The integration test passes: the 6th attempt with the correct password returns no session.
 - [ ] Admin unlock restores access, and the lock event appears in the audit log.
 
-**Status:** Pending
+**Status:** Applied
