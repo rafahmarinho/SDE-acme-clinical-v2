@@ -8,13 +8,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.core.audit import record_event
 from app.core.security import Perm, Principal, require
 from app.db import fetch_all, fetch_one, transaction
+from app.routers.break_glass import record_break_glass_use
 from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, ObservationIn, ObservationOut, Page
 
 router = APIRouter(prefix="/v1/patients/{patient_id}/observations", tags=["observations"])
 
 
 @router.get("", response_model=Page[ObservationOut])
-async def list_observations(patient_id: UUID, principal: Annotated[Principal, Depends(require(Perm.PATIENT_READ))],
+async def list_observations(patient_id: UUID, request: Request,
+                            principal: Annotated[Principal, Depends(require(Perm.PATIENT_READ))],
                             limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
                             offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0) -> Page[ObservationOut]:
     async with transaction(principal) as conn:
@@ -22,6 +24,8 @@ async def list_observations(patient_id: UUID, principal: Annotated[Principal, De
                from public.observations o join public.staff_profiles sp on sp.user_id = o.author_id
                where o.patient_id = %s order by o.created_at desc, o.id limit %s offset %s""",
                                (str(patient_id), limit + 1, offset))
+        if rows:
+            await record_break_glass_use(conn, principal, patient_id, "observations.read", request.state.request_id)
     return Page[ObservationOut](items=[ObservationOut(**r) for r in rows[:limit]],
                                 next_offset=offset + limit if len(rows) > limit else None)
 
@@ -39,5 +43,7 @@ async def add_observation(patient_id: UUID, body: ObservationIn, request: Reques
         await record_event(principal, "observation.created", "patient", str(patient_id),
                            details={"observation_id": str(row["id"]), "length": len(body.body)}, conn=conn,
                            request_id=request.state.request_id)
+        await record_break_glass_use(conn, principal, patient_id, "observation.created", request.state.request_id)
+
         name = await fetch_one(conn, "select full_name from public.staff_profiles where user_id = %s", (str(principal.user_id),))
     return ObservationOut(**row, author_name=name["full_name"] if name else "")

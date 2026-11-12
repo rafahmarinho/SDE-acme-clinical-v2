@@ -198,6 +198,9 @@ def test_t113_verb_tampering_never_reaches_protected_data(client, fake_db, route
     if route_path == "/v1/health" and verb == "GET":
         assert r.status_code == 200
         return
+    if route_path == "/v1/csp-report" and verb == "POST":  # public report sink: 204, no data, no DB access
+        assert r.status_code == 204 and r.content == b"" and fake_db.calls == []
+        return
     assert r.status_code in (400, 401, 403, 404, 405), (verb, route_path, r.status_code)
     assert b'"items"' not in r.content
     assert fake_db.calls == []

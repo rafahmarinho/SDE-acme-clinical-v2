@@ -1,7 +1,6 @@
 import { useCallback, useState, type FormEvent } from "react";
-import { api } from "../services/api";
-import { supabase } from "../lib/supabase";
-import { MAINTENANCE_KINDS, type MaintenanceKind, type Monitor } from "../services/types";
+import { api, MAX_PAIRING_CODE, MIN_PAIRING_CODE, PAIRING_CODE_PATTERN } from "../services/api";
+import { MAINTENANCE_KINDS, type Bed, type MaintenanceKind, type Monitor, type Ward } from "../services/types";
 import { useAuth } from "../auth/AuthContext";
 import { useAsync } from "../hooks/useAsync";
 import { useRealtime, ConnectionLabel } from "../hooks/useRealtime";
@@ -10,24 +9,21 @@ import { LoadingState } from "../components/LoadingState";
 import { SearchFilterBar } from "../components/SearchFilterBar";
 import { formatDateTime, humanize } from "../lib/format";
 
-interface Bed {
-  id: string;
-  ward_id: string;
-  label: string;
+/** Beds (with occupancy) come from the API (GET /v1/wards/{id}/beds), never from direct table reads. */
+export async function loadBeds(wards: Ward[]): Promise<Bed[]> {
+  const perWard = await Promise.all(wards.map((w) => api.beds(w.id)));
+  return perWard.flat();
 }
 
-/** Beds are reference data the browser may read directly (RLS: read-only for signed-in staff). */
-async function loadBeds(): Promise<Bed[]> {
-  const { data, error } = await supabase.from("beds").select("id, ward_id, label").order("label");
-  if (error) throw new Error("Beds could not be loaded.");
-  return (data ?? []) as Bed[];
+export function pairingCodeValid(raw: string): boolean {
+  return PAIRING_CODE_PATTERN.test(raw.trim());
 }
 
 export default function Devices() {
   const { can } = useAuth();
   const monitors = useAsync(() => api.monitors(), []);
   const wards = useAsync(() => api.wards(), []);
-  const beds = useAsync(loadBeds, [], can("device:write"));
+  const beds = useAsync(() => loadBeds(wards.data ?? []), [wards.data], can("device:write") && !!wards.data);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [bindFor, setBindFor] = useState<Monitor | null>(null);
@@ -49,6 +45,7 @@ export default function Devices() {
     try {
       await api.unassignMonitor(m.id);
       await monitors.reload();
+      await beds.reload();
     } catch (err) {
       setError(err);
     }
@@ -111,7 +108,7 @@ export default function Devices() {
                         Bind to bed
                       </button>
                     ))}
-                  {can("maintenance:write") && (
+                  {(can("maintenance:read") || can("maintenance:write")) && (
                     <button type="button" className="secondary" onClick={() => setMaintFor(m)}>
                       Maintenance
                     </button>
@@ -125,22 +122,30 @@ export default function Devices() {
       {bindFor && (
         <BindForm
           monitor={bindFor}
-          beds={(beds.data ?? []).filter((b) => !(monitors.data ?? []).some((m) => m.bed_id === b.id))}
+          beds={(beds.data ?? []).filter((b) => !b.occupied && !(monitors.data ?? []).some((m) => m.bed_id === b.id))}
           bedsError={beds.error}
           wardName={wardName}
           onClose={() => setBindFor(null)}
           onDone={async () => {
             setBindFor(null);
             await monitors.reload();
+            await beds.reload();
           }}
         />
       )}
-      {maintFor && <Maintenance monitor={maintFor} onClose={() => setMaintFor(null)} onSaved={monitors.reload} />}
+      {maintFor && (
+        <Maintenance
+          monitor={maintFor}
+          canWrite={can("maintenance:write")}
+          onClose={() => setMaintFor(null)}
+          onSaved={monitors.reload}
+        />
+      )}
     </section>
   );
 }
 
-function BindForm(props: {
+export function BindForm(props: {
   monitor: Monitor;
   beds: Bed[];
   bedsError: unknown;
@@ -150,22 +155,25 @@ function BindForm(props: {
 }) {
   const { monitor, beds, wardName } = props;
   const [bedId, setBedId] = useState("");
+  const [pairingCode, setPairingCode] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const bed = beds.find((b) => b.id === bedId);
+  const codeValid = pairingCodeValid(pairingCode);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!bedId || !confirmed) return;
+    if (!bedId || !confirmed || !codeValid) return;
     setBusy(true);
     setError(null);
     try {
-      await api.assignMonitor(monitor.id, bedId);
+      await api.assignMonitor(monitor.id, bedId, pairingCode.trim());
       await props.onDone();
     } catch (err) {
       setError(err);
     } finally {
+      setPairingCode(""); // never keep the device secret around after an attempt
       setBusy(false);
     }
   }
@@ -185,6 +193,23 @@ function BindForm(props: {
           ))}
         </select>
       </label>
+      <label>
+        Pairing code (printed on the monitor label)
+        <input
+          value={pairingCode}
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={MAX_PAIRING_CODE}
+          aria-describedby="pairing-help"
+          onChange={(e) => setPairingCode(e.target.value)}
+        />
+      </label>
+      <p id="pairing-help" className="muted small">
+        The pairing code proves this is the physical monitor ({MIN_PAIRING_CODE} to {MAX_PAIRING_CODE} characters).
+        {pairingCode && !codeValid ? " Check the code: letters, digits, - and _ only." : ""}
+      </p>
       {bed && (
         <label className="checkbox">
           <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />I have checked at the
@@ -192,7 +217,7 @@ function BindForm(props: {
         </label>
       )}
       <div className="row">
-        <button type="submit" disabled={busy || !bedId || !confirmed}>
+        <button type="submit" disabled={busy || !bedId || !confirmed || !codeValid}>
           {busy ? "Binding…" : "Confirm binding"}
         </button>
         <button type="button" className="secondary" onClick={props.onClose}>
@@ -203,7 +228,17 @@ function BindForm(props: {
   );
 }
 
-function Maintenance({ monitor, onClose, onSaved }: { monitor: Monitor; onClose: () => void; onSaved: () => Promise<void> }) {
+function Maintenance({
+  monitor,
+  canWrite,
+  onClose,
+  onSaved,
+}: {
+  monitor: Monitor;
+  canWrite: boolean;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
   const records = useAsync(() => api.maintenance(monitor.id), [monitor.id]);
   const [kind, setKind] = useState<MaintenanceKind>("inspection");
   const [notes, setNotes] = useState("");
@@ -236,32 +271,34 @@ function Maintenance({ monitor, onClose, onSaved }: { monitor: Monitor; onClose:
           Close
         </button>
       </div>
-      <form onSubmit={submit} autoComplete="off">
-        <ErrorMessage error={error} />
-        <div className="row">
+      {canWrite && (
+        <form onSubmit={submit} autoComplete="off">
+          <ErrorMessage error={error} />
+          <div className="row">
+            <label>
+              Type
+              <select value={kind} onChange={(e) => setKind(e.target.value as MaintenanceKind)}>
+                {MAINTENANCE_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {humanize(k)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Next due
+              <input type="date" value={nextDue} autoComplete="off" onChange={(e) => setNextDue(e.target.value)} />
+            </label>
+          </div>
           <label>
-            Type
-            <select value={kind} onChange={(e) => setKind(e.target.value as MaintenanceKind)}>
-              {MAINTENANCE_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {humanize(k)}
-                </option>
-              ))}
-            </select>
+            Notes
+            <textarea value={notes} maxLength={1000} rows={2} autoComplete="off" spellCheck={false} onChange={(e) => setNotes(e.target.value)} />
           </label>
-          <label>
-            Next due
-            <input type="date" value={nextDue} autoComplete="off" onChange={(e) => setNextDue(e.target.value)} />
-          </label>
-        </div>
-        <label>
-          Notes
-          <textarea value={notes} maxLength={1000} rows={2} autoComplete="off" spellCheck={false} onChange={(e) => setNotes(e.target.value)} />
-        </label>
-        <button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Record maintenance"}
-        </button>
-      </form>
+          <button type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Record maintenance"}
+          </button>
+        </form>
+      )}
       <ErrorMessage error={records.error} onRetry={records.reload} />
       {records.loading && !records.data && <LoadingState />}
       {records.data?.length === 0 && <p className="muted">No maintenance recorded.</p>}

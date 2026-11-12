@@ -15,7 +15,7 @@ os.environ.update({
     "SUPABASE_ANON_KEY": "anon-test-key",
     "SUPABASE_SERVICE_ROLE_KEY": "service-test-key",
     "SUPABASE_JWT_SECRET": "test-jwt-secret-that-is-long-enough-123456",
-    "DATABASE_URL": "postgresql://acme_api:x@localhost:5432/postgres?sslmode=verify-full",
+    "DATABASE_URL": "postgresql://acme_api:Test-DB-Pw-7f3k9q2m@localhost:5432/postgres?sslmode=verify-full",
     "CORS_ALLOWED_ORIGINS": "https://acme-clinical.vercel.app",
 })
 
@@ -45,6 +45,13 @@ def identities(monkeypatch):
         return store.get(str(user_id))
 
     monkeypatch.setattr("app.db.fetch_staff_identity", fake_identity)
+
+    async def no_session_check(request, principal):  # no app_sessions table without a database
+        return None
+
+    # get_principal runs app.routers.auth.enforce_session on every request; tests that exercise the real
+    # session check call it directly or restore it (see tests/test_sessions.py).
+    monkeypatch.setattr("app.core.security._enforce_session", no_session_check)
     events: list[tuple] = []
 
     async def fake_record(principal, action, entity_type, entity_id=None, **kw):

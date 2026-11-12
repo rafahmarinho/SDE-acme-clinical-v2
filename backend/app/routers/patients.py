@@ -7,12 +7,14 @@ for records the caller may not see, so identifiers cannot be enumerated.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import StrictBool
 
 from app.core.config import get_settings
 from app.core.security import Perm, Principal, require
 from app.db import fetch_all, fetch_one, transaction
-from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, Page, PatientOut, ReadingOut, SearchText
+from app.routers.break_glass import record_break_glass_use
+from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, Page, PatientOut, ReadingOut, SearchText, Strict, bounded_int
 
 router = APIRouter(prefix="/v1/patients", tags=["patients"])
 MAX_READINGS = 120  # two minutes of 1 Hz vitals for the live chart; the server-side LIMIT always applies
@@ -33,15 +35,36 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+class PatientSearch(Strict):
+    """Search criteria in the request BODY (T219): free-text terms that may identify a patient never travel in
+    the URL, so they cannot end up in browser history, proxy or access logs."""
+
+    q: SearchText | None = None
+    ward_id: UUID | None = None
+    alarming: StrictBool | None = None
+    limit: bounded_int(1, MAX_PAGE_SIZE) = 25
+    offset: bounded_int(0, MAX_OFFSET) = 0
+
+
+@router.post("/search", response_model=Page[PatientOut])
+async def search_patients(body: PatientSearch, principal: Reader) -> Page[PatientOut]:
+    return await _list(principal, body.q, body.ward_id, body.alarming, body.limit, body.offset)
+
+
 @router.get("", response_model=Page[PatientOut])
 async def list_patients(
     principal: Reader,
-    q: Annotated[SearchText | None, Query()] = None,
+    q: Annotated[SearchText | None, Query(deprecated=True, description="Use POST /v1/patients/search")] = None,
     ward_id: UUID | None = None,
     alarming: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 25,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> Page[PatientOut]:
+    return await _list(principal, q, ward_id, alarming, limit, offset)
+
+
+async def _list(principal: Principal, q: str | None, ward_id: UUID | None, alarming: bool | None,
+                limit: int, offset: int) -> Page[PatientOut]:
     # The search term only ever travels as a bound parameter (LIKE wildcards escaped), never in the SQL text.
     limit = min(limit, get_settings().max_page_size)
     params: dict = {"ward": str(ward_id) if ward_id else None, "limit": limit + 1, "offset": offset,
@@ -59,20 +82,23 @@ async def list_patients(
 
 
 @router.get("/{patient_id}", response_model=PatientOut)
-async def get_patient(patient_id: UUID, principal: Reader) -> PatientOut:
+async def get_patient(patient_id: UUID, request: Request, principal: Reader) -> PatientOut:
     async with transaction(principal) as conn:
         row = await fetch_one(conn, _BASE + " where p.id = %s", (str(patient_id),))
-    if row is None:
-        raise HTTPException(404, "Patient not found.")
+        if row is None:
+            raise HTTPException(404, "Patient not found.")
+        await record_break_glass_use(conn, principal, patient_id, "patient.read", request.state.request_id)
     return PatientOut(**row)
 
 
 @router.get("/{patient_id}/readings", response_model=Page[ReadingOut])
-async def recent_readings(patient_id: UUID, principal: Reader,
+async def recent_readings(patient_id: UUID, request: Request, principal: Reader,
                           limit: Annotated[int, Query(ge=1, le=MAX_READINGS)] = 60) -> Page[ReadingOut]:
     async with transaction(principal) as conn:
         if await fetch_one(conn, "select 1 from public.patients where id = %s", (str(patient_id),)) is None:
             raise HTTPException(404, "Patient not found.")
+        await record_break_glass_use(conn, principal, patient_id, "readings.read", request.state.request_id)
+
         rows = await fetch_all(conn, """select recorded_at, heart_rate, spo2, resp_rate, bp_systolic, bp_diastolic, ecg,
                quality::text as quality from public.readings where patient_id = %s order by recorded_at desc limit %s""",
                                (str(patient_id), limit))

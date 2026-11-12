@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import random
 import re
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -39,7 +40,9 @@ def _clean_state():
 
 
 def _h(identities, role, aal="aal1"):
-    return {"Authorization": f"Bearer {make_token(add_identity(identities, role), aal=aal)}"}
+    # A fresh interactive sign-in (auth_time = now), so step-up protected routes accept the token.
+    token = make_token(add_identity(identities, role), aal=aal, auth_time=int(time.time()))
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
@@ -450,4 +453,4 @@ def test_t4602_watchdog_failure_never_hides_alarms(client, identities, alarm_env
 
     monkeypatch.setattr(alarm_router.alarm_service, "watchdog_sweep", broken)
     r = client.get("/v1/alarms", headers=_h(identities, "nurse"))
-    assert r.status_code == 200 and r.json()[0]["type"] == "low_spo2"
+    assert r.status_code == 200 and r.json()["items"][0]["type"] == "low_spo2"

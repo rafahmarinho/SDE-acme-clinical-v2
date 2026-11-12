@@ -50,10 +50,16 @@ async def close_pool() -> None:
 
 
 @asynccontextmanager
-async def transaction(principal: Any | None) -> AsyncIterator[AsyncConnection]:
-    """Yield a connection inside a transaction scoped to the caller's identity (connections are always returned)."""
+async def transaction(principal: Any | None, *, read_only: bool = False) -> AsyncIterator[AsyncConnection]:
+    """Yield a connection inside a transaction scoped to the caller's identity (connections are always returned).
+
+    ``read_only=True`` (pure GET handlers) makes PostgreSQL refuse any write in the transaction, so a bug or an
+    injected statement in a read path cannot modify data.
+    """
     async with _get_pool().connection() as conn:
         async with conn.transaction():
+            if read_only:
+                await conn.execute("set transaction read only")
             if principal is not None:
                 await conn.execute(
                     "select set_config('app.user_id', %s, true), set_config('app.role', %s, true)",

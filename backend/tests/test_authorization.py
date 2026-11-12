@@ -76,13 +76,14 @@ def test_every_non_public_route_depends_on_authentication():
 
 def test_every_mutating_route_declares_a_permission_or_is_self_service():
     missing = [f"{m} {p}" for m, p, r in _routes()
-               if m in MUTATING and (m, p) not in SELF_SERVICE_ROUTES and route_permissions(r) is None]
+               if m in MUTATING and (m, p) not in SELF_SERVICE_ROUTES | PUBLIC_ROUTES and route_permissions(r) is None]
     assert missing == []
 
 
 def test_public_and_self_service_whitelists_are_small_and_exist():
     paths = {(m, p) for m, p, _ in _routes()}
-    assert PUBLIC_ROUTES == frozenset({("GET", "/v1/health")})
+    # Liveness + browser CSP violation reports (browsers send them without credentials; see csp_report.py).
+    assert PUBLIC_ROUTES == frozenset({("GET", "/v1/health"), ("POST", "/v1/csp-report")})
     assert PUBLIC_ROUTES <= paths
     assert SELF_SERVICE_ROUTES <= paths, "stale whitelist entries must be removed"
     assert not any(p.startswith(("/v1/staff", "/v1/simulation/", "/v1/thresholds", "/v1/break-glass"))
@@ -160,6 +161,9 @@ def test_token_for_unknown_user_is_rejected(client, identities):
 @pytest.mark.parametrize("method,path", sorted(PUBLIC_ROUTES))
 def test_public_route_reachable_without_auth(client, method, path):
     r = client.request(method, path)
+    if path == "/v1/csp-report":
+        assert r.status_code == 204 and r.content == b""  # nothing reflected
+        return
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}  # liveness only: no version, DB or environment details
 
@@ -180,8 +184,9 @@ EXPECTED_PERMISSIONS = {
                  "break_glass:request"},
     Role.PHYSICIAN: {"patient:read", "observation:write", "alarm:read", "alarm:ack", "threshold:write", "device:read",
                      "report:read", "file:write", "break_glass:request"},
-    Role.BIOMED_TECH: {"alarm:read", "device:read", "device:write", "maintenance:write"},
-    Role.ADMIN: {"patient:read", "alarm:read", "device:read", "device:write", "report:read", "staff:manage",
+    Role.BIOMED_TECH: {"alarm:read", "device:read", "device:write", "maintenance:read", "maintenance:write"},
+    # maintenance:read (view history) but never maintenance:write (cross-owner request F3).
+    Role.ADMIN: {"patient:read", "alarm:read", "device:read", "device:write", "maintenance:read", "report:read", "staff:manage",
                  "settings:manage", "simulation:control", "events:read_all", "break_glass:review"},
 }
 

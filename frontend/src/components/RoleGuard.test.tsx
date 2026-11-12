@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 
 vi.mock("../lib/supabase", () => ({
@@ -11,7 +11,7 @@ vi.mock("../lib/supabase", () => ({
 
 import { AuthContext, type AuthState } from "../auth/AuthContext";
 import { Navigation } from "../App";
-import { RoleGuard } from "./RoleGuard";
+import { RequireAuth, RoleGuard, visibleNavItems } from "./RoleGuard";
 import type { Me, Permission, Role } from "../services/types";
 
 // Mirrors backend/app/core/security.py PERMISSIONS.
@@ -21,14 +21,14 @@ const PERMS: Record<Role, Permission[]> = {
     "patient:read", "observation:write", "alarm:read", "alarm:ack", "threshold:write", "device:read", "report:read",
     "file:write", "break_glass:request",
   ],
-  biomed_tech: ["alarm:read", "device:read", "device:write", "maintenance:write"],
+  biomed_tech: ["alarm:read", "device:read", "device:write", "maintenance:read", "maintenance:write"],
   admin: [
-    "patient:read", "alarm:read", "device:read", "device:write", "threshold:write", "report:read", "staff:manage",
+    "patient:read", "alarm:read", "device:read", "device:write", "maintenance:read", "report:read", "staff:manage",
     "settings:manage", "simulation:control", "events:read_all", "break_glass:review",
   ],
 };
 
-function authFor(role: Role): AuthState {
+function authFor(role: Role, extra: Partial<Me> = {}): AuthState {
   const me: Me = {
     user_id: "00000000-0000-4000-8000-000000000001",
     email: `${role}@acme.test`,
@@ -39,6 +39,7 @@ function authFor(role: Role): AuthState {
     previous_login_at: null,
     privacy_notice_accepted_at: null,
     session_idle_minutes: 15,
+    ...extra,
   };
   return {
     status: "signed_in",
@@ -98,5 +99,52 @@ describe("role-aware navigation", () => {
     );
     expect(screen.queryByText("admin-only")).toBeNull();
     expect(screen.getByText("ack-button")).toBeTruthy();
+  });
+});
+
+describe("settings and privacy gating (P2/P3)", () => {
+  it("Settings is visible only with settings:manage", () => {
+    expect(visibleNavItems(PERMS.admin).some((i) => i.to === "/settings")).toBe(true);
+    for (const role of ["nurse", "physician", "biomed_tech"] as Role[]) {
+      expect(visibleNavItems(PERMS[role]).some((i) => i.to === "/settings")).toBe(false);
+    }
+  });
+
+  it("the Settings route refuses roles without settings:manage", () => {
+    render(
+      <AuthContext.Provider value={authFor("nurse")}>
+        <MemoryRouter>
+          <RequireAuth requires={["settings:manage"]}>
+            <p>settings-screen</p>
+          </RequireAuth>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    );
+    expect(screen.queryByText("settings-screen")).toBeNull();
+    expect(screen.getByText(/Not available/)).toBeTruthy();
+  });
+
+  function renderAt(path: string, me: Partial<Me>) {
+    return render(
+      <AuthContext.Provider value={authFor("nurse", me)}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/patients" element={<RequireAuth><p>patients-screen</p></RequireAuth>} />
+            <Route path="/profile" element={<RequireAuth><p>profile-screen</p></RequireAuth>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    );
+  }
+
+  it("redirects to /profile while the privacy notice is not acknowledged", () => {
+    renderAt("/patients", { privacy_notice_required: true });
+    expect(screen.queryByText("patients-screen")).toBeNull();
+    expect(screen.getByText("profile-screen")).toBeTruthy();
+  });
+
+  it("opens screens normally once the notice is acknowledged", () => {
+    renderAt("/patients", { privacy_notice_required: false });
+    expect(screen.getByText("patients-screen")).toBeTruthy();
   });
 });

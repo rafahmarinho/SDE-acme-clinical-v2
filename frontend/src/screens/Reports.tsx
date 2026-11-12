@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../services/api";
 import { useAsync } from "../hooks/useAsync";
+import { useAuth } from "../auth/AuthContext";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { LoadingState } from "../components/LoadingState";
 import { formatDateTime, humanize } from "../lib/format";
@@ -12,13 +13,28 @@ const PERIODS = [
   { hours: 24 * 30, label: "Last 30 days" },
 ];
 
+/** Small counts are suppressed by the API (null) so individuals cannot be singled out (P7). */
+export function formatCount(count: number | null): string {
+  return count === null ? "fewer than 5" : String(count);
+}
+
 export default function Reports() {
   const wards = useAsync(() => api.wards(), []);
   const [wardId, setWardId] = useState("");
   const [hours, setHours] = useState(24);
   const report = useAsync(() => api.wardActivity({ ward_id: wardId || undefined, hours }), [wardId, hours]);
   const r = report.data;
-  const totalAlarms = r ? Object.values(r.alarm_counts).reduce((a, b) => a + b, 0) : 0;
+  const { can } = useAuth();
+  const [exportError, setExportError] = useState<unknown>(null);
+  const exportCsv = async (kind: "ward_activity" | "audit_events") => {
+    setExportError(null);
+    try {
+      await api.exportCsv(kind, { ward_id: wardId || undefined, hours });
+    } catch (err) {
+      setExportError(err);
+    }
+  };
+  const totalAlarms = r ? Object.values(r.alarm_counts).reduce<number>((a, b) => a + (b ?? 0), 0) : 0;
 
   return (
     <section>
@@ -48,7 +64,16 @@ export default function Reports() {
         <button type="button" className="secondary" onClick={report.reload}>
           Regenerate
         </button>
+        <button type="button" className="secondary" onClick={() => void exportCsv("ward_activity")}>
+          Export CSV
+        </button>
+        {can("events:read_all") && (
+          <button type="button" className="secondary" onClick={() => void exportCsv("audit_events")}>
+            Export audit events (CSV)
+          </button>
+        )}
       </div>
+      <ErrorMessage error={exportError} />
       <ErrorMessage error={report.error} onRetry={report.reload} />
       {report.loading && <LoadingState label="Generating report…" />}
       {r && (
@@ -84,7 +109,7 @@ export default function Reports() {
                   {Object.entries(r.alarm_counts).map(([type, count]) => (
                     <tr key={type}>
                       <td>{humanize(type)}</td>
-                      <td className="strong">{count}</td>
+                      <td className="strong">{formatCount(count)}</td>
                     </tr>
                   ))}
                 </tbody>

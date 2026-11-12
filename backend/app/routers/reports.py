@@ -20,7 +20,7 @@ from app.core.audit import record_event
 from app.core.security import Perm, Principal, require
 from app.db import transaction
 from app.schemas import Out, ReportOut
-from app.services import reports
+from app.services import privacy, reports
 
 router = APIRouter(prefix="/v1/reports", tags=["reports"])
 ActionFilter = Annotated[str | None, Query(max_length=600, description="Comma-separated action names")]
@@ -67,7 +67,8 @@ async def ward_activity(request: Request, principal: Annotated[Principal, Depend
         await record_event(principal, "report.generated", "report", "ward_activity",
                            details={"ward_id": str(ward_id) if ward_id else None, "hours": hours}, conn=conn,
                            request_id=request.state.request_id)
-    return ReportOut(**data)
+    # Small-cell suppression (privacy): counts below MIN_CELL_SIZE are reported as null, not their value.
+    return ReportOut(**{**data, "alarm_counts": privacy.suppress_small_counts(data["alarm_counts"])})
 
 
 @router.get("/audit", response_model=AuditSummaryOut)

@@ -274,11 +274,13 @@ function Files({
 
 function BreakGlass({ patientId, onGranted }: { patientId: string; onGranted: () => void }) {
   const [reason, setReason] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!acknowledged) return;
     setBusy(true);
     setError(null);
     try {
@@ -303,7 +305,12 @@ function BreakGlass({ patientId, onGranted }: { patientId: string; onGranted: ()
         Clinical reason (at least 10 characters)
         <textarea value={reason} minLength={10} maxLength={500} rows={3} autoComplete="off" spellCheck={false} onChange={(e) => setReason(e.target.value)} />
       </label>
-      <button type="submit" disabled={busy || reason.trim().length < 10}>
+      <label className="checkbox">
+        <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />I understand that
+        emergency access is for direct patient care only, lasts 30 minutes, and that every action is audited and reviewed.
+      </label>
+      <p className="muted small">You may be asked to confirm your password before access is granted.</p>
+      <button type="submit" disabled={busy || reason.trim().length < 10 || !acknowledged}>
         Request emergency access
       </button>
     </form>

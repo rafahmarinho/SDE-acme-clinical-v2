@@ -16,6 +16,9 @@ from app.core.errors import DomainError
 from app.core.security import Perm, Principal, require
 from app.db import fetch_all, fetch_one, transaction
 from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, AssignMonitor, MonitorOut, Page
+from app.services import device_auth
+
+PAIRING_FAILED = "The pairing code does not match this monitor (or too many attempts). Check the device label."
 
 router = APIRouter(prefix="/v1/monitors", tags=["monitors"])
 
@@ -32,7 +35,7 @@ _SELECT = """
 async def list_monitors(principal: Annotated[Principal, Depends(require(Perm.DEVICE_READ))],
                         limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = MAX_PAGE_SIZE,
                         offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0) -> Page[MonitorOut]:
-    async with transaction(principal) as conn:
+    async with transaction(principal, read_only=True) as conn:
         rows = await fetch_all(conn, _SELECT + " order by m.serial, m.id limit %s offset %s", (limit + 1, offset))
     return Page[MonitorOut](items=[MonitorOut(**r) for r in rows[:limit]],
                             next_offset=offset + limit if len(rows) > limit else None)
@@ -41,6 +44,18 @@ async def list_monitors(principal: Annotated[Principal, Depends(require(Perm.DEV
 @router.post("/{monitor_id}/assignment", response_model=MonitorOut)
 async def assign_monitor(monitor_id: UUID, body: AssignMonitor, request: Request,
                          principal: Annotated[Principal, Depends(require(Perm.DEVICE_WRITE))]) -> MonitorOut:
+    # Device authenticity first, in its own transaction, so the failure counter (throttling) and the audit
+    # record of a failed attempt are committed even though the request is refused.
+    auth_failed = False
+    async with transaction(principal) as conn:
+        try:
+            await device_auth.verify_in_db(conn, monitor_id, body.pairing_code)
+        except device_auth.DeviceAuthError:
+            auth_failed = True
+            await record_event(principal, "monitor.auth_failed", "monitor", str(monitor_id), outcome="failure",
+                               error_code="device_auth_failed", conn=conn, request_id=request.state.request_id)
+    if auth_failed:
+        raise DomainError(PAIRING_FAILED, 403, code="device_auth_failed")
     async with transaction(principal) as conn:
         monitor = await fetch_one(conn, "select id, status::text as status from public.monitors where id = %s for update",
                                   (str(monitor_id),))
@@ -48,6 +63,7 @@ async def assign_monitor(monitor_id: UUID, body: AssignMonitor, request: Request
             raise HTTPException(404, "Monitor not found.")
         if monitor["status"] in ("maintenance", "retired"):
             raise DomainError("This monitor is not available for clinical use.")
+
         if await fetch_one(conn, "select 1 from public.beds where id = %s", (str(body.bed_id),)) is None:
             raise HTTPException(404, "Bed not found.")
         await conn.execute("update public.monitor_assignments set unassigned_at = now() where monitor_id = %s and unassigned_at is null",

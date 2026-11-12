@@ -1,7 +1,9 @@
 import { Suspense, lazy, useState, type ReactNode } from "react";
-import { BrowserRouter, Link, NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
-import { signedOutMessage, takeSignedOutReason } from "./auth/session";
+import { rememberSignedOutReason, signedOutMessage, takeSignedOutReason } from "./auth/session";
+import { DegradedBanner } from "./components/DegradedBanner";
+import { StepUpDialog } from "./components/StepUpDialog";
 import { RequireAuth, homePathFor, visibleNavItems } from "./components/RoleGuard";
 import { LoadingState } from "./components/LoadingState";
 import { formatDateTime, humanize } from "./lib/format";
@@ -11,6 +13,7 @@ import ForgotPassword from "./screens/ForgotPassword";
 import ResetPassword from "./screens/ResetPassword";
 
 const Profile = lazy(() => import("./screens/Profile"));
+const PrivacyPage = lazy(() => import("./screens/Profile").then((m) => ({ default: m.PrivacyPage })));
 const Settings = lazy(() => import("./screens/Settings"));
 const WardOverview = lazy(() => import("./screens/WardOverview"));
 const PatientList = lazy(() => import("./screens/PatientList"));
@@ -56,6 +59,9 @@ function LoginNotice() {
         {revoked > 0
           ? ` ${revoked === 1 ? "One older session was" : `${revoked} older sessions were`} signed out because your account reached its limit of concurrent sessions.`
           : ""}
+        {(loginNotice.failed_since_previous_login ?? 0) > 0
+          ? ` There ${loginNotice.failed_since_previous_login === 1 ? "was 1 failed sign-in attempt" : `were ${loginNotice.failed_since_previous_login} failed sign-in attempts`} on your account since your previous sign-in.`
+          : ""}
         {loginNotice.previous_session_unclosed
           ? " Your last session was not signed out. Always sign out on shared workstations."
           : ""}
@@ -88,9 +94,26 @@ export function SignedOutNotice() {
   );
 }
 
+/** Footer on every page, signed in or not (T751): the privacy notice is always one click away. */
+export function Footer() {
+  return (
+    <footer className="footer muted small">
+      <Link to="/privacy">Privacy notice</Link>
+    </footer>
+  );
+}
+
+/** /signed-out is served with Clear-Site-Data (vercel.json); it only forwards to the login page. */
+export function SignedOut() {
+  const [params] = useSearchParams();
+  rememberSignedOutReason(params.get("reason"));
+  return <Navigate to="/login" replace />;
+}
+
 function PrivacyReminder() {
   const { me } = useAuth();
-  if (!me || me.privacy_notice_accepted_at) return null;
+  if (!me || (me.privacy_notice_required === false || (me.privacy_notice_required === undefined && me.privacy_notice_accepted_at)))
+    return null;
   return (
     <div className="notice" role="status">
       Please review and accept the privacy notice on your <Link to="/profile">profile page</Link>.
@@ -125,11 +148,13 @@ function Shell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="content">
+        <DegradedBanner />
         <SessionExpiryWarning />
         <LoginNotice />
         <PrivacyReminder />
         <Suspense fallback={<LoadingState />}>{children}</Suspense>
       </main>
+      <Footer />
     </div>
   );
 }
@@ -139,6 +164,15 @@ function Protected({ requires, children }: { requires?: Permission[]; children: 
     <RequireAuth requires={requires}>
       <Shell>{children}</Shell>
     </RequireAuth>
+  );
+}
+
+function Public({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <Suspense fallback={<LoadingState />}>{children}</Suspense>
+      <Footer />
+    </>
   );
 }
 
@@ -154,14 +188,16 @@ export function AppRoutes() {
       <Route
         path="/login"
         element={
-          <>
+          <Public>
             <SignedOutNotice />
             <Login />
-          </>
+          </Public>
         }
       />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/signed-out" element={<SignedOut />} />
+      <Route path="/privacy" element={<Public><PrivacyPage /></Public>} />
+      <Route path="/forgot-password" element={<Public><ForgotPassword /></Public>} />
+      <Route path="/reset-password" element={<Public><ResetPassword /></Public>} />
       <Route path="/" element={<Home />} />
       <Route path="/wards" element={<Protected requires={["alarm:read"]}><WardOverview /></Protected>} />
       <Route path="/patients" element={<Protected requires={["patient:read"]}><PatientList /></Protected>} />
@@ -174,7 +210,7 @@ export function AppRoutes() {
       <Route path="/team" element={<Protected requires={["staff:manage"]}><Team /></Protected>} />
       <Route path="/simulation" element={<Protected requires={["simulation:control"]}><Simulation /></Protected>} />
       <Route path="/events" element={<Protected><Events /></Protected>} />
-      <Route path="/settings" element={<Protected><Settings /></Protected>} />
+      <Route path="/settings" element={<Protected requires={["settings:manage"]}><Settings /></Protected>} />
       <Route path="/profile" element={<Protected><Profile /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -187,6 +223,7 @@ export default function App() {
       <BrowserRouter>
         <AppRoutes />
       </BrowserRouter>
+      <StepUpDialog />
     </AuthProvider>
   );
 }

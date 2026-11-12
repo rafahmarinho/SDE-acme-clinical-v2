@@ -152,6 +152,9 @@ class SessionStart(BaseModel):
     revoked_sessions: int
     previous_session_unclosed: bool
     expires_at: str | None
+    # Failed sign-in attempts on this account since the previous successful sign-in (shown in the login
+    # banner so users notice guessing attacks); None when not available.
+    failed_since_previous_login: int | None = None
 
 
 @router.post("/session", response_model=SessionStart)
@@ -160,6 +163,7 @@ async def session_started(request: Request, principal: CurrentPrincipal) -> Sess
     ip = _ip_or_none(request)
     user_agent = (request.headers.get("user-agent") or "")[:256]
     prev = None
+    failed: int | None = None
     async with transaction(principal) as conn:
         reg = await fetch_one(conn, "select * from public.register_session(%s, %s, %s)",
                               (str(sid), user_agent, _ip_hash(ip)))
@@ -179,6 +183,10 @@ async def session_started(request: Request, principal: CurrentPrincipal) -> Sess
                        set previous_login_at = last_login_at, previous_login_ip = last_login_ip,
                            last_login_at = now(), last_login_ip = %s::inet
                        where user_id = %s""", (ip, str(principal.user_id)))
+                activity = await fetch_one(conn, "select * from public.login_activity_summary(%s)",
+                                           (str(principal.user_id),))
+                if activity and activity.get("failed_since_previous_login") is not None:
+                    failed = int(activity["failed_since_previous_login"])
                 await audit.record_event(principal, "auth.login", "session", str(sid),
                                          details={"aal": principal.aal, "revoked_sessions": reg["revoked_count"]},
                                          conn=conn, request_id=request.state.request_id)
@@ -193,6 +201,7 @@ async def session_started(request: Request, principal: CurrentPrincipal) -> Sess
         revoked_sessions=int(reg["revoked_count"] or 0),
         previous_session_unclosed=bool(reg["previous_unclosed"]),
         expires_at=verdict.expires_at.isoformat() if verdict.expires_at else None,
+        failed_since_previous_login=failed,
     )
 
 

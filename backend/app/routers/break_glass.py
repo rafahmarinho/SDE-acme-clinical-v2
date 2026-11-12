@@ -132,7 +132,7 @@ async def record_break_glass_use(conn: AsyncConnection, principal: Principal, pa
     It is a no-op for normal ward access.
     """
     row = await fetch_one(conn, "select public.active_break_glass_grant(%s) as grant_id", (str(patient_id),))
-    if row and row["grant_id"]:
+    if row and row.get("grant_id"):
         await record_event(principal, "break_glass.used", "patient", str(patient_id),
                            details={"grant_id": str(row["grant_id"]), "action": action}, conn=conn,
                            request_id=request_id)

@@ -55,7 +55,7 @@ class DB:
         return None
 
     @asynccontextmanager
-    async def transaction(self, principal):
+    async def transaction(self, principal, read_only=False):
         yield Conn(self)
 
     async def fetch_all(self, conn, sql, params=()):

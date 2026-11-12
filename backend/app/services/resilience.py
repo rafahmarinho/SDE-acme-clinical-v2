@@ -50,11 +50,13 @@ ROUTE_CLASSES: list[tuple[str, str, OpClass]] = [
     (r"GET", r"^/v1/simulation$", OpClass.MONITORING),
     (r"POST", r"^/v1/simulation/advance$", OpClass.MONITORING),
     (r".*", r"^/v1/simulation(/.*)?$", OpClass.SUPERVISORY),
+    (r"POST", r"^/v1/patients/search$", OpClass.MONITORING),  # read-only search (criteria in the body)
     (r"POST", r"^/v1/patients/[^/]+/observations$", OpClass.MAIN_FUNCTION),
     (r".*", r"^/v1/observations(/.*)?$", OpClass.MAIN_FUNCTION),
     (r"GET", r"^/v1/(wards|patients|monitors)(/.*)?$", OpClass.MONITORING),
     (r".*", r"^/v1/(patients|monitors|thresholds|maintenance|files)(/.*)?$", OpClass.MAIN_FUNCTION),
     (r".*", r"^/v1/(reports|staff|settings|events)(/.*)?$", OpClass.SUPERVISORY),
+    (r"POST", r"^/v1/csp-report$", OpClass.SUPERVISORY),  # diagnostics: first to be shed under load
 ]
 _COMPILED = [(re.compile(m), re.compile(p), c) for m, p, c in ROUTE_CLASSES]
 DEFAULT_CLASS = OpClass.MAIN_FUNCTION

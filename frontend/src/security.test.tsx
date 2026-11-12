@@ -125,6 +125,12 @@ describe("transport, framing, sniffing and isolation headers", () => {
     expect(all["cache-control"]).toBeUndefined();
   });
 
+  it("/signed-out wipes the browser with Clear-Site-Data and is never cached (S2, T1540)", () => {
+    const signedOut = rule("/signed-out");
+    expect(signedOut["clear-site-data"]).toBe('"cache", "cookies", "storage"');
+    expect(signedOut["cache-control"]).toMatch(/no-store/);
+  });
+
   it("missing assets are not rewritten to index.html", () => {
     expect(vercel.rewrites).toEqual([{ source: "/((?!assets/).*)", destination: "/index.html" }]);
   });

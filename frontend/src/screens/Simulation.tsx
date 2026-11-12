@@ -22,6 +22,7 @@ export default function Simulation() {
   const [scenario, setScenario] = useState<Scenario>("normal");
   const [monitorIds, setMonitorIds] = useState<string[]>([]);
   const [steps, setSteps] = useState(1);
+  const [scenarioAck, setScenarioAck] = useState(false);
   const [resetText, setResetText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -44,8 +45,10 @@ export default function Simulation() {
   const applyScenario = (e: FormEvent) => {
     e.preventDefault();
     void run("scenario", async () => {
-      state.setData(await api.setScenario(scenario, monitorIds));
-      setResult(`Scenario set to ${humanize(scenario)}.`);
+      const { notice, ...next } = await api.setScenario(scenario, monitorIds);
+      state.setData(next);
+      setResult(`Scenario set to ${humanize(scenario)}. ${notice}`);
+      setScenarioAck(false);
     });
   };
 
@@ -54,19 +57,21 @@ export default function Simulation() {
       if (!state.data) return;
       const out = await api.advanceSimulation(steps, state.data.version);
       await state.reload();
-      const parts = Object.entries(out)
-        .filter(([, v]) => typeof v === "number" || typeof v === "string")
-        .map(([k, v]) => `${humanize(k)}: ${String(v)}`);
-      setResult(`Advanced ${steps} step(s). ${parts.join(" · ")}`);
+      setResult(
+        `Advanced ${steps} step(s) to tick ${out.tick}. Readings: ${out.readings} · Alarms raised: ${out.raised} · ` +
+          `resolved: ${out.resolved} · Evaluation errors: ${out.evaluation_errors} · ` +
+          `Connection-lost alarms: ${out.watchdog_connection_lost}`,
+      );
     });
 
   const reset = (e: FormEvent) => {
     e.preventDefault();
     if (resetText !== RESET_PHRASE) return;
     void run("reset", async () => {
-      state.setData(await api.resetSimulation(resetText));
+      const { notice, ...next } = await api.resetSimulation(resetText);
+      state.setData(next);
       setResetText("");
-      setResult("Demo data has been reset.");
+      setResult(notice);
     });
   };
 
@@ -129,7 +134,11 @@ export default function Simulation() {
               ))}
             </div>
           </fieldset>
-          <button type="submit" disabled={!!busy}>
+          <label className="checkbox">
+            <input type="checkbox" checked={scenarioAck} onChange={(e) => setScenarioAck(e.target.checked)} />I understand that
+            this changes the simulated readings of the selected monitors and will raise or clear alarms. The change is audited.
+          </label>
+          <button type="submit" disabled={!!busy || !scenarioAck}>
             {busy === "scenario" ? "Applying…" : "Apply scenario"}
           </button>
         </form>

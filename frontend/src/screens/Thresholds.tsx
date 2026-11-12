@@ -21,7 +21,7 @@ export default function Thresholds() {
       <h1>Alarm limits</h1>
       <p className="muted">
         Ward default limits apply to every patient in the ward unless a patient-specific override is set on the patient page.
-        {!can("threshold:write") && " You can view limits; changing them requires a physician or administrator."}
+        {!can("threshold:write") && " You can view limits; changing them requires a physician assigned to the ward."}
       </p>
       <ErrorMessage error={wards.error} onRetry={wards.reload} />
       {wards.loading && !wards.data && <LoadingState />}

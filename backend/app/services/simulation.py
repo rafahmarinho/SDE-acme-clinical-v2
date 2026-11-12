@@ -204,7 +204,9 @@ async def set_scenario(conn: AsyncConnection, user_id: str, scenario: str, monit
     await _seal_state(conn)
 
 
-RESET_SQL = ("delete from public.readings", "delete from public.alarms", "delete from public.observations",
+# acme_api holds no DELETE on readings/alarms/observations (0003_authz_rbac.sql): the bulk delete runs only
+# inside the SECURITY DEFINER function owned by acme_reset_owner, which re-checks simulation:control.
+RESET_SQL = ("select public.reset_simulation_data()",
              "update public.monitors set battery_pct = 100, status = 'online', last_heartbeat_at = now() where status <> 'retired'")
 
 

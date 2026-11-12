@@ -18,8 +18,8 @@ from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import BodySizeLimitMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 from app.core.security import assert_routes_protected
-from app.routers import (alarms, auth, break_glass, events, files, maintenance, monitors, observations, patients, profile,
-                         reports, settings as settings_router, simulation, staff, thresholds, wards)
+from app.routers import (alarms, auth, break_glass, csp_report, events, files, maintenance, monitors, observations, patients,
+                         profile, reports, settings as settings_router, simulation, staff, thresholds, wards)
 
 
 @asynccontextmanager
@@ -56,21 +56,26 @@ def create_app() -> FastAPI:
         allow_credentials=False,          # bearer tokens, no cookies
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "X-Request-Id"],
-        expose_headers=["X-Request-Id"],
+        # WWW-Authenticate carries the step_up_required / session_* reasons the SPA reacts to.
+        expose_headers=["X-Request-Id", "WWW-Authenticate", "Retry-After"],
         max_age=600,
     )
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_bytes, upload_max_bytes=settings.max_upload_bytes)
-    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware, allowed_hosts=settings.allowed_hosts or None)
 
     for module in (auth, profile, wards, patients, observations, alarms, thresholds, monitors, maintenance, staff,
-                   settings_router, simulation, events, reports, break_glass, files):
+                   settings_router, simulation, events, reports, break_glass, files, csp_report):
         app.include_router(module.router)
 
     @app.get("/v1/health", include_in_schema=False)
     async def health() -> dict:
         return {"status": "ok"}
 
+    # Deny by default at build time in every environment (docs routes tolerated outside production);
+    # the lifespan re-checks in production before serving.
+    assert_routes_protected(app, production=settings.is_production)
     return app
+
 
 
 app = create_app()

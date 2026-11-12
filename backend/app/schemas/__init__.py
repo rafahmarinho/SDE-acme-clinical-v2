@@ -126,6 +126,17 @@ class WardOut(Out):
     active_alarms: int
 
 
+class BedOut(Out):
+    id: UUID
+    ward_id: UUID
+    label: str
+    patient_id: UUID | None
+    patient_pseudonym: str | None
+    monitor_id: UUID | None
+    monitor_serial: str | None
+    occupied: bool
+
+
 class PatientOut(Out):
     id: UUID
     pseudonym: str
@@ -224,6 +235,9 @@ class MonitorOut(Out):
 class AssignMonitor(Strict):
     bed_id: UUID
     confirm: StrictBool
+    # Per-device secret printed on the monitor label (T425/T426); verified (hashed, throttled) in the database.
+    pairing_code: Annotated[str, Field(min_length=16, max_length=256, pattern=r"^[A-Za-z0-9_-]+$")]
+
 
     @model_validator(mode="after")
     def _confirmed(self) -> AssignMonitor:
@@ -379,7 +393,7 @@ class ReportOut(Out):
     ward_id: UUID | None
     period_start: datetime
     period_end: datetime
-    alarm_counts: dict[str, int]
+    alarm_counts: dict[str, int | None]  # None = suppressed small count
     mean_time_to_ack_seconds: float | None
     unacknowledged_high_priority: int
     readings_count: int

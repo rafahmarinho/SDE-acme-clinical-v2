@@ -139,9 +139,12 @@ def test_security_definer_functions_pin_search_path():
 
 
 def test_role_permissions_match_python_matrix():
-    insert = re.search(r"insert into public\.role_permissions \(role, permission\) values(.*?);", AUTHZ_SQL, re.S)
-    assert insert
-    sql_pairs = set(re.findall(r"\('(\w+)', '([a-z_]+:[a-z_]+)'\)", insert.group(1)))
+    # 0003 resets the table and inserts the base matrix; later migrations (e.g. 0008) only add rows.
+    assert re.search(r"insert into public\.role_permissions \(role, permission\) values(.*?);", AUTHZ_SQL, re.S)
+    assert "delete from public.role_permissions" not in ALL_SQL.split(AUTHZ_SQL)[-1]
+    sql_pairs: set[tuple[str, str]] = set()
+    for insert in re.finditer(r"insert into public\.role_permissions \(role, permission\) values(.*?);", ALL_SQL, re.S):
+        sql_pairs |= set(re.findall(r"\('(\w+)', '([a-z_]+:[a-z_]+)'\)", insert.group(1)))
     py_pairs = {(role.value, perm.value) for role, perms in PERMISSIONS.items() for perm in perms}
     assert sql_pairs == py_pairs
 

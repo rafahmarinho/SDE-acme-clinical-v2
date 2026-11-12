@@ -10,6 +10,7 @@ export type Permission =
   | "threshold:write"
   | "device:read"
   | "device:write"
+  | "maintenance:read"
   | "maintenance:write"
   | "report:read"
   | "file:write"
@@ -21,6 +22,9 @@ export type Permission =
   | "events:read_all";
 
 export interface Me {
+  privacy_notice_version?: string | null;
+  privacy_notice_required?: boolean;
+  erasure_requested_at?: string | null;
   user_id: string;
   email: string;
   full_name: string;
@@ -32,9 +36,17 @@ export interface Me {
   session_idle_minutes: number;
 }
 
+/** Response of POST /v1/auth/session (backend app/routers/auth.py SessionStart). */
 export interface SessionStart {
+  session_id?: string;
+  new_session?: boolean;
   previous_login_at: string | null;
   previous_login_ip: string | null;
+  revoked_sessions?: number;
+  previous_session_unclosed?: boolean;
+  expires_at?: string | null;
+  /** Failed sign-in attempts since the previous successful sign-in (null when unknown). */
+  failed_since_previous_login?: number | null;
 }
 
 export interface ProfileExport {
@@ -268,7 +280,8 @@ export interface WardReport {
   ward_id: string | null;
   period_start: string;
   period_end: string;
-  alarm_counts: Record<string, number>;
+  /** null = suppressed small count (fewer than 5). */
+  alarm_counts: Record<string, number | null>;
   mean_time_to_ack_seconds: number | null;
   unacknowledged_high_priority: number;
   readings_count: number;
@@ -279,4 +292,92 @@ export interface BreakGlassGrant {
   id: string;
   patient_id: string;
   expires_at: string;
+}
+
+export interface Bed {
+  id: string;
+  ward_id: string;
+  label: string;
+  patient_id: string | null;
+  patient_pseudonym: string | null;
+  monitor_id: string | null;
+  monitor_serial: string | null;
+  occupied: boolean;
+}
+
+/** Actions that return a server-written consequence notice (T342). */
+export interface WithNotice {
+  notice: string;
+}
+
+export type AlarmAckResult = Alarm & WithNotice;
+export type SimulationActionResult = SimulationState & WithNotice;
+
+export interface AdvanceResult {
+  tick: number;
+  version: number;
+  readings: number;
+  raised: number;
+  resolved: number;
+  evaluation_errors: number;
+  watchdog_connection_lost: number;
+}
+
+export interface SystemStatus {
+  mode: "normal" | "degraded";
+  shed_classes: string[];
+  checked_at: string;
+}
+
+export interface MonitorState {
+  monitor_id: string;
+  serial: string;
+  status: string;
+  battery_pct: number;
+  last_heartbeat_at: string | null;
+  state: string;
+  stale: boolean;
+  heartbeat_age_seconds: number | null;
+  active_alarm_types: string[];
+}
+
+export interface InviteAccepted {
+  detail: string;
+}
+
+export interface RoleRequest {
+  id: string;
+  target_user_id: string;
+  new_role: Role;
+  requested_by: string;
+  requested_at: string;
+  status: "pending" | "approved" | "rejected";
+}
+
+export interface ActiveGrant {
+  id: string;
+  patient_id: string;
+  granted_at: string;
+  expires_at: string;
+}
+
+export interface PendingGrant {
+  id: string;
+  patient_id: string;
+  reason: string;
+  granted_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  ended: boolean;
+  requested_by: string;
+}
+
+export type BreakGlassOutcome = "appropriate" | "inappropriate";
+
+export type ReportKind = "ward_activity" | "audit_events";
+
+export interface ErasureRequest {
+  id: string;
+  status: "pending" | "completed" | "rejected";
+  requested_at: string;
 }

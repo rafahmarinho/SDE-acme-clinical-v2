@@ -15,23 +15,26 @@ Administrators cannot change their own role or deactivate themselves (prevents l
 self-escalation). Every change is audit-logged. See docs/security/authentication.md.
 """
 
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from app.core.audit import record_event
 from app.core.config import Settings, get_settings
 from app.core.errors import DomainError
-from app.core.security import Perm, Principal, require
+from app.core.security import Perm, Principal, require, require_recent_auth
 from app.db import fetch_all, fetch_one, transaction
-from app.schemas import StaffInvite, StaffOut, StaffUpdate
+from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, Page, RoleName, StaffInvite, StaffOut, StaffUpdate, Strict
 from app.services.identity import canonical_email, uniform_auth_timing
 
 router = APIRouter(prefix="/v1/staff", tags=["staff"])
 Admin = Annotated[Principal, Depends(require(Perm.STAFF_MANAGE))]
+# Account / privilege changes: permission + step-up re-authentication (recent password or MFA).
+SteppedUpAdmin = Annotated[Principal, Depends(require_recent_auth(Perm.STAFF_MANAGE))]
 
 INVITE_ACCEPTED = ("Invitation processed. If the address can receive invitations, the person will get an email "
                    "with a single-use link to set their password.")
@@ -46,6 +49,28 @@ class InviteAccepted(BaseModel):
     detail: str
 
 
+class RoleRequestIn(Strict):
+    new_role: RoleName
+
+
+class RoleRequestOut(BaseModel):
+    id: UUID
+    target_user_id: UUID
+    new_role: RoleName
+    requested_by: UUID
+    requested_at: datetime
+    status: Literal["pending", "approved", "rejected"]
+
+
+ADMIN_PROMOTION_NEEDS_APPROVAL = ("Granting the administrator role needs a second administrator: create a role request "
+                                  "and ask another administrator to approve it.")
+_ROLE_REQUESTS_SQL = """select id, target_user_id, new_role::text as new_role, requested_by, requested_at, status
+                        from public.staff_role_requests where status = 'pending' order by requested_at desc limit %s"""
+_ROLE_REQUEST_INSERT_SQL = """insert into public.staff_role_requests (target_user_id, new_role, requested_by)
+                              values (%s, %s::public.app_role, %s)
+                              returning id, target_user_id, new_role::text as new_role, requested_by, requested_at, status"""
+
+
 def supabase_admin_client(settings: Settings) -> httpx.AsyncClient:
     """Outbound API -> Supabase Auth Admin: HTTPS with certificate verification, service key in headers only."""
     base = str(settings.supabase_url).rstrip("/")
@@ -56,11 +81,14 @@ def supabase_admin_client(settings: Settings) -> httpx.AsyncClient:
                              headers={"apikey": key, "Authorization": f"Bearer {key}"})
 
 
-@router.get("", response_model=list[StaffOut])
-async def list_staff(principal: Admin) -> list[StaffOut]:
-    async with transaction(principal) as conn:
-        rows = await fetch_all(conn, _SELECT + " group by sp.user_id order by sp.full_name")
-    return [StaffOut(**r) for r in rows]
+@router.get("", response_model=Page[StaffOut])
+async def list_staff(principal: Admin, limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = MAX_PAGE_SIZE,
+                     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0) -> Page[StaffOut]:
+    async with transaction(principal, read_only=True) as conn:
+        rows = await fetch_all(conn, _SELECT + " group by sp.user_id order by sp.full_name, sp.user_id limit %s offset %s",
+                               (limit + 1, offset))
+    return Page[StaffOut](items=[StaffOut(**r) for r in rows[:limit]],
+                          next_offset=offset + limit if len(rows) > limit else None)
 
 
 async def _invite_via_supabase(email: str, full_name: str) -> str | None:
@@ -84,7 +112,7 @@ async def _set_sign_in_ban(user_id: UUID, banned: bool) -> None:
 
 
 @router.post("", response_model=InviteAccepted, status_code=202)
-async def invite_staff(body: StaffInvite, request: Request, principal: Admin) -> InviteAccepted:
+async def invite_staff(body: StaffInvite, request: Request, principal: SteppedUpAdmin) -> InviteAccepted:
     try:
         email = canonical_email(str(body.email))
     except ValueError as exc:
@@ -115,7 +143,7 @@ async def invite_staff(body: StaffInvite, request: Request, principal: Admin) ->
 
 
 @router.patch("/{user_id}", response_model=StaffOut)
-async def update_staff(user_id: UUID, body: StaffUpdate, request: Request, principal: Admin) -> StaffOut:
+async def update_staff(user_id: UUID, body: StaffUpdate, request: Request, principal: SteppedUpAdmin) -> StaffOut:
     if user_id == principal.user_id and (body.role is not None or body.is_active is False):
         raise DomainError("You cannot change your own role or deactivate your own account.", 403)
     async with transaction(principal) as conn:
@@ -123,6 +151,9 @@ async def update_staff(user_id: UUID, body: StaffUpdate, request: Request, princ
                                   (str(user_id),))
         if current is None:
             raise HTTPException(404, "Staff member not found.")
+        if body.role is RoleName.admin and current["role"] != RoleName.admin.value:
+            # Two-person rule (also enforced by the staff_profiles_guard trigger): use a role request.
+            raise DomainError(ADMIN_PROMOTION_NEEDS_APPROVAL, 409, code="approval_required")
         if body.role is not None:
             await conn.execute("update public.staff_profiles set role = %s::public.app_role where user_id = %s",
                                (body.role.value, str(user_id)))
@@ -153,3 +184,56 @@ async def unlock_staff(user_id: UUID, request: Request, principal: Admin) -> Res
                            details={"was_locked": bool(row and row["unlocked"])}, conn=conn,
                            request_id=request.state.request_id)
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Two-person rule for role changes (staff_role_requests, 0003_authz_rbac.sql): one administrator requests,
+# a DIFFERENT administrator (never the target) approves, and the approval applies the role. The database
+# trigger refuses an administrator promotion without such an approval; RLS/CHECKs forbid self-approval.
+# ---------------------------------------------------------------------------
+@router.get("/role-requests", response_model=Page[RoleRequestOut])
+async def list_role_requests(principal: Admin,
+                             limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = MAX_PAGE_SIZE) -> Page[RoleRequestOut]:
+    async with transaction(principal, read_only=True) as conn:
+        rows = await fetch_all(conn, _ROLE_REQUESTS_SQL, (limit,))
+    return Page[RoleRequestOut](items=[RoleRequestOut(**r) for r in rows])
+
+
+@router.post("/{user_id}/role-requests", response_model=RoleRequestOut, status_code=201)
+async def request_role_change(user_id: UUID, body: RoleRequestIn, request: Request,
+                              principal: SteppedUpAdmin) -> RoleRequestOut:
+    if user_id == principal.user_id:
+        raise DomainError("You cannot request a role change for your own account.", 403)
+    async with transaction(principal) as conn:
+        if await fetch_one(conn, "select 1 from public.staff_profiles where user_id = %s", (str(user_id),)) is None:
+            raise HTTPException(404, "Staff member not found.")
+        row = await fetch_one(conn, _ROLE_REQUEST_INSERT_SQL, (str(user_id), body.new_role.value, str(principal.user_id)))
+        await record_event(principal, "staff.role_change_requested", "staff_profile", str(user_id),
+                           details={"role_request_id": str(row["id"]), "new_role": body.new_role.value}, conn=conn,
+                           request_id=request.state.request_id)
+    return RoleRequestOut(**row)
+
+
+@router.post("/role-requests/{role_request_id}/approve", response_model=StaffOut)
+async def approve_role_change(role_request_id: UUID, request: Request, principal: SteppedUpAdmin) -> StaffOut:
+    async with transaction(principal) as conn:
+        req = await fetch_one(conn, """select target_user_id, new_role::text as new_role, requested_by, status
+               from public.staff_role_requests where id = %s for update""", (str(role_request_id),))
+        if req is None or req["status"] != "pending":
+            raise HTTPException(404, "Pending role request not found.")
+        if str(principal.user_id) in (str(req["requested_by"]), str(req["target_user_id"])):
+            await record_event(principal, "staff.role_change_denied", "staff_role_request", str(role_request_id),
+                               outcome="denied", conn=None, request_id=request.state.request_id)
+            raise DomainError("A role change must be approved by a different administrator.", 403)
+        target = str(req["target_user_id"])
+        await conn.execute("""update public.staff_role_requests set status = 'approved', decided_by = %s, decided_at = now()
+               where id = %s and status = 'pending'""", (str(principal.user_id), str(role_request_id)))
+        await conn.execute("update public.staff_profiles set role = %s::public.app_role where user_id = %s",
+                           (req["new_role"], target))
+        await record_event(principal, "staff.role_change_approved", "staff_profile", target,
+                           details={"role_request_id": str(role_request_id), "new_role": req["new_role"],
+                                    "requested_by": str(req["requested_by"])}, conn=conn,
+                           request_id=request.state.request_id)
+        row = await fetch_one(conn, _SELECT + " where sp.user_id = %s group by sp.user_id", (target,))
+    return StaffOut(**row)
+

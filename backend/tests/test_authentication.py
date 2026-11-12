@@ -262,7 +262,7 @@ def staff_env(monkeypatch):
     env = SimpleNamespace(existing={}, sql=[], events=[], supabase=[], supabase_status=200)
 
     @asynccontextmanager
-    async def fake_tx(principal):
+    async def fake_tx(principal, read_only=False):
         yield _Conn(env.sql)
 
     async def fake_one(conn, sql, params=()):

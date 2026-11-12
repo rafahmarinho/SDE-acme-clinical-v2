@@ -2,7 +2,8 @@
 // API requires it (administrators: the API rejects tokens below aal2). Every sign-in failure shows the
 // same generic message; nothing about the account (exists, locked, unconfirmed) is revealed.
 import { useState, type FormEvent } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
+import { safeNext } from "../lib/safeNext";
 import { useAuth } from "../auth/AuthContext";
 import { homePathFor } from "../components/RoleGuard";
 import { ErrorMessage } from "../components/ErrorMessage";
@@ -17,16 +18,18 @@ type Step = { kind: "password" } | { kind: "verify"; factorId: string } | { kind
 const MFA_CODE = /^\d{6}$/;
 
 export default function Login() {
-  const { signIn, signOut, refreshMe, status, me, error: profileError } = useAuth();
+  const { signIn, signOut, refreshMe, completeMfa, status, me, error: profileError } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<Step>({ kind: "password" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const location = useLocation();
+  const from = (location.state as { from?: unknown } | null)?.from;
 
   // Not while a sign-in is in progress: the MFA decision must be made before leaving this screen.
-  if (status === "signed_in" && me && step.kind === "password" && !busy) return <Navigate to={homePathFor(me.permissions)} replace />;
+  if (status === "signed_in" && me && step.kind === "password" && !busy) return <Navigate to={safeNext(from, homePathFor(me.permissions))} replace />;
 
   async function mfaRequiredByApi(): Promise<boolean> {
     try {
@@ -89,12 +92,16 @@ export default function Login() {
       setError(GENERIC_MFA_ERROR);
       return;
     }
-    try {
-      await registerSession(); // registers the (now two-factor) session with the API
-    } catch {
-      // bookkeeping only
+    if (completeMfa) {
+      await completeMfa(); // registers the (now two-factor) session, shows the login notice, reloads /v1/me
+    } else {
+      try {
+        await registerSession();
+      } catch {
+        // bookkeeping only
+      }
+      await refreshMe();
     }
-    await refreshMe();
     setBusy(false);
     setStep({ kind: "password" });
   }
@@ -176,6 +183,13 @@ export default function Login() {
         </button>
         <Link to="/forgot-password">Forgot your password?</Link>
         <p className="muted small">Accounts are personal. Never share your password or sign in for someone else.</p>
+        <p className="muted small" role="note">
+          For authorised hospital staff only. Use is monitored and every action is recorded in the audit log. ACME Clinical
+          supports, but does not replace, checking the patient at the bedside.
+        </p>
+        <p className="muted small">
+          We process your work account data to run and secure this service. <Link to="/privacy">Read the privacy notice</Link>.
+        </p>
       </form>
     </main>
   );

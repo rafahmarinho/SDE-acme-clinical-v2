@@ -98,6 +98,9 @@ def upload_env(monkeypatch, identities):
 
     monkeypatch.setattr(files_router, "transaction", fake_transaction(conn))
     monkeypatch.setattr(files_router, "fetch_one", fake_one)
+    from app.routers import break_glass as break_glass_router  # break-glass use lookup (A5) on the same fake
+
+    monkeypatch.setattr(break_glass_router, "fetch_one", fake_one)
     monkeypatch.setattr(files_router, "_storage_client", lambda timeout: FakeStorage())
     monkeypatch.setattr(files_router, "record_event", fake_record)
     monkeypatch.setattr(files_router, "notify_admins", fake_notify)

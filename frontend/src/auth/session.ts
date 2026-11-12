@@ -133,11 +133,30 @@ export function performLogout(opts: LogoutOptions): Promise<void> {
       channel?.postMessage("signed-out");
       channel?.close();
     }
-    navigate("/login");
+    // /signed-out is served with Clear-Site-Data (vercel.json) and then forwards to /login. The reason is
+    // carried in the URL because Clear-Site-Data also wipes sessionStorage; it is an allow-listed word only.
+    navigate(signedOutPath(reason));
   })().finally(() => {
     inProgress = null;
   });
   return inProgress;
+}
+
+const REASONS: readonly LogoutReason[] = ["user", "idle", "expired", "revoked"];
+
+export function signedOutPath(reason: LogoutReason): string {
+  return `/signed-out?reason=${encodeURIComponent(reason)}`;
+}
+
+/** Re-store the (allow-listed) reason after the /signed-out page load cleared the browser storage. */
+export function rememberSignedOutReason(raw: string | null): void {
+  const reason = REASONS.find((r) => r === raw);
+  if (!reason) return;
+  try {
+    window.sessionStorage.setItem(SIGNED_OUT_KEY, reason);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function signedOutMessage(reason: LogoutReason | null): string | null {

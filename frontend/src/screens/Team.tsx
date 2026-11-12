@@ -27,6 +27,7 @@ export default function Team() {
   const { me } = useAuth();
   const staff = useAsync(() => api.staff(), []);
   const wards = useAsync(() => api.wards(), []);
+  const roleRequests = useAsync(() => api.roleRequests(), []);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [error, setError] = useState<unknown>(null);
@@ -54,7 +55,15 @@ export default function Team() {
   async function update(s: Staff, body: Parameters<typeof api.updateStaff>[1], confirmText?: string) {
     if (confirmText && !window.confirm(confirmText)) return;
     setError(null);
+    setNotice(null);
     try {
+      if (body.role === "admin" && s.role !== "admin") {
+        // Two-person rule: promotion to administrator is a request a second administrator must approve.
+        await api.requestRoleChange(s.user_id, "admin");
+        setNotice(`Role request created for ${s.full_name}. Another administrator must approve it.`);
+        await roleRequests.reload();
+        return;
+      }
       const updated = await api.updateStaff(s.user_id, body);
       staff.setData(staff.data?.map((x) => (x.user_id === updated.user_id ? updated : x)));
     } catch (err) {
@@ -82,6 +91,47 @@ export default function Team() {
       </SearchFilterBar>
       <ErrorMessage error={error ?? staff.error} onRetry={staff.reload} />
       {notice && <p role="status">{notice}</p>}
+      {(roleRequests.data ?? []).filter((r) => r.status === "pending").length > 0 && (
+        <div className="card">
+          <h2>Pending role requests</h2>
+          <ul className="list">
+            {(roleRequests.data ?? [])
+              .filter((r) => r.status === "pending")
+              .map((r) => {
+                const target = staff.data?.find((x) => x.user_id === r.target_user_id);
+                const mine = r.requested_by === me?.user_id;
+                return (
+                  <li key={r.id} className="row spread">
+                    <span>
+                      {target?.full_name ?? "Staff member"} → {ROLE_LABELS[r.new_role]} · requested {formatDateTime(r.requested_at)}
+                    </span>
+                    {mine ? (
+                      <span className="muted small">Awaiting another administrator</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={async () => {
+                          if (!window.confirm(`Approve ${target?.full_name ?? "this"} as ${ROLE_LABELS[r.new_role]}?`)) return;
+                          setError(null);
+                          try {
+                            const updated = await api.approveRoleRequest(r.id);
+                            staff.setData(staff.data?.map((x) => (x.user_id === updated.user_id ? updated : x)));
+                            await roleRequests.reload();
+                          } catch (err) {
+                            setError(err);
+                          }
+                        }}
+                      >
+                        Approve
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+          </ul>
+        </div>
+      )}
       {staff.loading && !staff.data && <LoadingState />}
       {staff.data && (
         <table className="table">
@@ -231,6 +281,7 @@ function Invite({ wards, onInvited }: { wards: { id: string; name: string }[]; o
     setError(null);
     setDone(null);
     try {
+      // The API answers {detail} identically for new and existing addresses; the UI shows one fixed message.
       await api.inviteStaff({ email: canonicalEmail(email), full_name: fullName.trim(), role, ward_ids: wardIds });
       onInvited();
       setDone(INVITE_SENT);

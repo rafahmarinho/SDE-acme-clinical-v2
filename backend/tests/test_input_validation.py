@@ -54,7 +54,7 @@ class FakeDB:
         self.one = None
 
     @asynccontextmanager
-    async def transaction(self, principal):
+    async def transaction(self, principal, read_only=False):
         yield FakeConn(self)
 
     async def fetch_all(self, conn, sql, params=()):
@@ -745,7 +745,7 @@ def test_t2609_list_endpoints_bound_result_size(client, identities, fake_db, pat
     assert re.search(r"\blimit\b", fake_db.calls[-1][1], re.I)
 
 
-KNOWN_UNBOUNDED_ELSEWHERE = {"/v1/wards", "/v1/staff", "/v1/alarms/monitor-states", "/v1/break-glass/pending-review", "/v1/break-glass/mine"}  # see CROSS-OWNER requests
+KNOWN_UNBOUNDED_ELSEWHERE = {"/v1/alarms/monitor-states"}  # bounded at 200 (one row per monitor, whole fleet on one screen)
 
 
 def test_t2609_every_collection_route_has_bounded_limit():

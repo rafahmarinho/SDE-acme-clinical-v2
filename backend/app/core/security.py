@@ -50,6 +50,7 @@ class Perm(StrEnum):
     THRESHOLD_WRITE = "threshold:write"
     DEVICE_READ = "device:read"
     DEVICE_WRITE = "device:write"
+    MAINTENANCE_READ = "maintenance:read"
     MAINTENANCE_WRITE = "maintenance:write"
     REPORT_READ = "report:read"
     FILE_WRITE = "file:write"
@@ -70,9 +71,11 @@ PERMISSIONS: dict[Role, frozenset[Perm]] = {
     Role.PHYSICIAN: frozenset({Perm.PATIENT_READ, Perm.OBSERVATION_WRITE, Perm.ALARM_READ, Perm.ALARM_ACK,
                               Perm.THRESHOLD_WRITE, Perm.DEVICE_READ, Perm.REPORT_READ, Perm.FILE_WRITE,
                               Perm.BREAK_GLASS}),
-    Role.BIOMED_TECH: frozenset({Perm.ALARM_READ, Perm.DEVICE_READ, Perm.DEVICE_WRITE, Perm.MAINTENANCE_WRITE}),
+    Role.BIOMED_TECH: frozenset({Perm.ALARM_READ, Perm.DEVICE_READ, Perm.DEVICE_WRITE, Perm.MAINTENANCE_READ,
+                                Perm.MAINTENANCE_WRITE}),
+    # Administrators may view maintenance history (fleet oversight) but never record maintenance.
     Role.ADMIN: frozenset({Perm.PATIENT_READ, Perm.ALARM_READ, Perm.DEVICE_READ, Perm.DEVICE_WRITE,
-                          Perm.REPORT_READ, Perm.STAFF_MANAGE, Perm.SETTINGS_MANAGE,
+                          Perm.MAINTENANCE_READ, Perm.REPORT_READ, Perm.STAFF_MANAGE, Perm.SETTINGS_MANAGE,
                           Perm.SIMULATION_CONTROL, Perm.EVENTS_READ_ALL, Perm.BREAK_GLASS_REVIEW}),
 }
 
@@ -90,6 +93,9 @@ CONFLICTING_PERMISSIONS: tuple[frozenset[Perm], ...] = (
 # The ONLY routes reachable without authentication (reviewed whitelist; see docs/security/authorization.md).
 PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("GET", "/v1/health"),  # liveness only: {"status": "ok"}, no version/DB/environment details
+    # Browser CSP violation reports (no credentials possible): bounded body, allow-listed fields logged with
+    # URLs reduced to their origin, always 204, rate-limited per IP. See app/routers/csp_report.py.
+    ("POST", "/v1/csp-report"),
 })
 # FastAPI interactive docs: mounted only outside production (create_app sets docs_url/openapi_url=None).
 NON_PRODUCTION_DOC_PATHS: frozenset[str] = frozenset({"/docs", "/docs/oauth2-redirect", "/openapi.json", "/redoc"})
@@ -103,7 +109,8 @@ SELF_SERVICE_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("PATCH", "/v1/me"),
     ("POST", "/v1/me/privacy-notice"),
     ("GET", "/v1/me/export"),
-    ("GET", "/v1/settings/security"),
+    ("POST", "/v1/me/export"),
+    ("POST", "/v1/me/erasure-request"),
     ("GET", "/v1/simulation"),
     ("GET", "/v1/events"),  # RLS: non-admins see only their own events
 })
@@ -202,8 +209,17 @@ async def get_principal(
         permissions=PERMISSIONS[role],
         last_auth_at=_last_auth_time(claims),
     )
+    # Server-side session state (revoked / idle / absolute timeout) on EVERY authenticated request.
+    await _enforce_session(request, principal)
     request.state.principal = principal
     return principal
+
+
+async def _enforce_session(request: Request, principal: Principal) -> None:
+    """Indirection so unit tests without a database can stub the session check (see tests/conftest.py)."""
+    from app.routers.auth import enforce_session  # local import avoids a cycle
+
+    await enforce_session(request, principal)
 
 
 def _amr_times(claims: dict) -> list[int]:

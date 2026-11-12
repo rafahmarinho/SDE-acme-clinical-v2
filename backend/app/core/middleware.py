@@ -19,6 +19,7 @@ horizontally), so it is a defence-in-depth layer; Vercel Firewall rate limits ar
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import re
@@ -27,7 +28,6 @@ import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-import jwt
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -56,6 +56,10 @@ MULTI_VALUED_QUERY_PARAMS: frozenset[str] = frozenset()
 # defence-in-depth guard against host-header poisoning. Override via the ``allowed_hosts`` argument.
 DEFAULT_ALLOWED_HOSTS = ("*.vercel.app", "localhost", "127.0.0.1", "testserver")
 
+# Exact paths whose body is not JSON and is validated by the route itself (still size-limited here):
+# browsers post CSP violation reports as application/csp-report or application/reports+json.
+RAW_BODY_PATHS: frozenset[str] = frozenset({"/v1/csp-report"})
+
 REJECTION_STATUSES = frozenset({400, 405, 413, 414, 415, 422, 429, 431})
 
 SECURITY_HEADERS = {
@@ -67,9 +71,10 @@ SECURITY_HEADERS = {
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-site",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-    # Every API response may contain patient or staff data.
-    "Cache-Control": "no-store",
+    # Every API response may contain patient or staff data: never cached by browsers or intermediaries.
+    "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate, private",
     "Pragma": "no-cache",
+    "Expires": "0",
 }
 
 
@@ -151,9 +156,10 @@ class BodySizeLimitMiddleware:
     """Reject oversized bodies (declared and streamed/chunked) and structurally invalid JSON bodies."""
 
     def __init__(self, app: ASGIApp, max_bytes: int, upload_max_bytes: int, upload_prefix: str = "/v1/files",
-                 json_max_bytes: int = MAX_JSON_BODY_BYTES):
+                 json_max_bytes: int = MAX_JSON_BODY_BYTES, raw_body_paths: Iterable[str] | None = None):
         self.app, self.max_bytes, self.upload_max, self.upload_prefix = app, max_bytes, upload_max_bytes, upload_prefix
         self.json_max = min(max_bytes, json_max_bytes)
+        self.raw_body_paths = frozenset(RAW_BODY_PATHS if raw_body_paths is None else raw_body_paths)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -181,7 +187,7 @@ class BodySizeLimitMiddleware:
             if not message.get("more_body", False):
                 break
         body = b"".join(chunks)
-        if body.strip():
+        if body.strip() and scope["path"] not in self.raw_body_paths:
             content_type = headers.get(b"content-type", b"").decode("latin-1").lower()
             media_type, _, params = content_type.partition(";")
             charset = params.strip().removeprefix("charset=").strip('"') if "charset=" in params else "utf-8"
@@ -241,11 +247,12 @@ ROUTE_LIMITS: tuple[RouteLimit, ...] = (
     RouteLimit("simulation", frozenset({"POST"}), re.compile(r"^/v1/simulation/"), 10),
     RouteLimit("reports", frozenset({"GET"}), re.compile(r"^/v1/reports/"), 5),
     RouteLimit("files-upload", frozenset({"POST"}), re.compile(r"^/v1/files/"), 10),
+    RouteLimit("csp-report", frozenset({"POST"}), re.compile(r"^/v1/csp-report/?$"), 20),
 )
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Token buckets: per client (verified-looking subject or IP), per IP ceiling, per sensitive route.
+    """Token buckets: per client (hash of the bearer token, or IP), per IP ceiling, per sensitive route.
 
     * Sensitive authentication routes (``/v1/auth``, ``/v1/break-glass``) use ``auth_per_minute``.
     * ``ROUTE_LIMITS`` add stricter budgets for simulation, reports and uploads.
@@ -264,14 +271,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _subject(request: Request) -> str | None:
+        """Bucket key for a request carrying a bearer token: a hash of the WHOLE token.
+
+        This middleware runs before the signature is verified, so it never trusts token claims: keying on an
+        unverified ``sub`` would let a forged token drain another user's budget. A token hash only lets a
+        caller throttle itself; rotating tokens is bounded by the per-IP ceiling.
+        """
         auth = request.headers.get("authorization", "")
         if not auth.lower().startswith("bearer "):
             return None
-        try:  # bucketing only; the signature is verified by the auth dependency
-            sub = jwt.decode(auth[7:].strip(), options={"verify_signature": False}).get("sub")
-        except jwt.PyJWTError:
+        token = auth[7:].strip()
+        if not token:
             return None
-        return str(sub)[:64] if sub else None
+        return "t:" + hashlib.sha256(token.encode("utf-8", "surrogatepass")).hexdigest()[:32]
 
     def _take(self, key: str, limit: int, now: float) -> float | None:
         """Consume one token; return None on success or the seconds until a token is available."""

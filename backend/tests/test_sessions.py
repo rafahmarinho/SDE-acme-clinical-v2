@@ -57,7 +57,7 @@ class SessionDB:
         self.now = T0
 
     @asynccontextmanager
-    async def transaction(self, principal):
+    async def transaction(self, principal, read_only=False):
         yield FakeConn(self)
 
     async def fetch_one(self, conn, sql, params=()):

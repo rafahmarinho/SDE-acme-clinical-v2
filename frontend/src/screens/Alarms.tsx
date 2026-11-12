@@ -1,7 +1,7 @@
 import { useCallback, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../services/api";
-import type { Alarm } from "../services/types";
+import type { Alarm, AlarmAckResult } from "../services/types";
 import { useAuth } from "../auth/AuthContext";
 import { useAsync } from "../hooks/useAsync";
 import { useRealtime, ConnectionLabel } from "../hooks/useRealtime";
@@ -25,7 +25,11 @@ export default function Alarms() {
   const reload = alarms.reload;
   const connection = useRealtime({ tables: ["alarms"], onChange: useCallback(() => void reload(), [reload]), poll: reload });
 
-  const replace = (updated: Alarm) => alarms.setData(alarms.data?.map((a) => (a.id === updated.id ? updated : a)));
+  const [ackNotice, setAckNotice] = useState<string | null>(null);
+  const replace = ({ notice, ...updated }: AlarmAckResult) => {
+    setAckNotice(notice); // the server states the consequence: acknowledged, NOT resolved (T342)
+    alarms.setData(alarms.data?.map((a) => (a.id === updated.id ? updated : a)));
+  };
   const activeCount = alarms.data?.filter((a) => a.state === "active").length ?? 0;
   const unacked = alarms.data?.filter((a) => a.state === "active" && !a.acknowledged_at).length ?? 0;
 
@@ -80,6 +84,11 @@ export default function Alarms() {
           </div>
         </div>
       )}
+      {ackNotice && (
+        <p className="notice" role="status">
+          {ackNotice}
+        </p>
+      )}
       <ErrorMessage error={alarms.error} onRetry={alarms.reload} />
       {alarms.loading && !alarms.data && <LoadingState />}
       {alarms.data?.length === 0 && <p className="muted">No alarms for this filter.</p>}
@@ -94,7 +103,7 @@ export default function Alarms() {
   );
 }
 
-function AckForm({ alarm, onDone }: { alarm: Alarm; onDone: (a: Alarm) => void }) {
+function AckForm({ alarm, onDone }: { alarm: Alarm; onDone: (a: AlarmAckResult) => void }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);

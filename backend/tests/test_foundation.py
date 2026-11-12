@@ -15,7 +15,8 @@ def test_security_headers_and_no_server_banner(client):
     for header in ("strict-transport-security", "x-content-type-options", "x-frame-options", "content-security-policy",
                    "referrer-policy", "cache-control"):
         assert header in r.headers
-    assert r.headers["cache-control"] == "no-store"
+    assert r.headers["cache-control"] == "no-store, no-cache, max-age=0, must-revalidate, private"
+    assert r.headers["expires"] == "0" and r.headers["pragma"] == "no-cache"
     assert "server" not in r.headers
     assert r.headers["x-request-id"]
 
@@ -90,7 +91,7 @@ def test_validation_errors_do_not_echo_input(client, identities):
     uid = add_identity(identities, "physician")
     r = client.put("/v1/thresholds/wards/00000000-0000-4000-8000-000000000001",
                    json={"parameter": "spo2", "low_limit": 99, "high_limit": 50, "confirm": True, "role": "admin<script>"},
-                   headers={"Authorization": f"Bearer {make_token(uid)}"})
+                   headers={"Authorization": f"Bearer {make_token(uid, auth_time=int(time.time()))}"})
     assert r.status_code == 422
     assert "<script>" not in r.text
 

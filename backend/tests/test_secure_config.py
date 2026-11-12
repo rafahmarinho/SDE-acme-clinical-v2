@@ -51,8 +51,8 @@ REQUIRED_ENV = {
     "SUPABASE_URL": "https://x.supabase.co",
     "SUPABASE_ANON_KEY": "anon-key-value",
     "SUPABASE_SERVICE_ROLE_KEY": "service-role-value",
-    "SUPABASE_JWT_SECRET": "j" * 40,
-    "DATABASE_URL": "postgresql://acme_api:pw@db.example:5432/postgres?sslmode=verify-full",
+    "SUPABASE_JWT_SECRET": "jwt-secret-for-tests-0123456789-abcdefXYZ",
+    "DATABASE_URL": "postgresql://acme_api:Test-DB-Pw-7f3k9q2m@db.example:5432/postgres?sslmode=verify-full",
 }
 
 
@@ -190,7 +190,7 @@ def test_t175_database_tls_must_verify_certificates(bare_env, monkeypatch):
         monkeypatch.setenv("DATABASE_URL", dsn)
         with pytest.raises(ValidationError):
             Settings()
-    monkeypatch.setenv("DATABASE_URL", "postgresql://acme_api:pw@h/db?sslmode=verify-full&sslrootcert=system")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://acme_api:Test-DB-Pw-7f3k9q2m@h/db?sslmode=verify-full&sslrootcert=system")
     assert Settings()
 
 
@@ -427,7 +427,7 @@ class _DB:
         self.approved: dict | None = None
 
     @asynccontextmanager
-    async def transaction(self, principal):
+    async def transaction(self, principal, read_only=False):
         yield _Conn(self)
 
     async def fetch_one(self, conn, sql, params=()):

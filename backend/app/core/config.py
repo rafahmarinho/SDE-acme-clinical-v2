@@ -43,6 +43,21 @@ class Settings(BaseSettings):
     auth_rate_limit_per_minute: int = Field(10, ge=1, le=1_000)
     max_page_size: int = Field(100, ge=1, le=1_000)
 
+    # Optional key material (SecretStr, never logged). Unset => derived from SUPABASE_JWT_SECRET via HKDF
+    # (app/services/integrity.py); production deployments should set dedicated keys.
+    audit_signing_key: SecretStr | None = None      # PEM, EC P-521 private key (audit record signatures)
+    config_integrity_key: SecretStr | None = None   # HMAC key for alarm-limit / simulation-state integrity MACs
+
+    # Host header allow-list (exact names or "*.suffix"); empty => middleware default (*.vercel.app, localhost).
+    allowed_hosts: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    @field_validator("allowed_hosts", mode="before")
+    @classmethod
+    def _split_hosts(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [v.strip().lower() for v in value.split(",") if v.strip()]
+        return value
+
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
@@ -78,6 +93,24 @@ class Settings(BaseSettings):
         if bad:
             raise ValueError("CORS_ALLOWED_ORIGINS must use https:// origins")
         return self
+
+    @model_validator(mode="after")
+    def _production_secret_strength(self) -> "Settings":
+        """Production refuses weak/placeholder system credentials and a superuser / non-TLS database DSN."""
+        if not self.is_production:
+            return self
+        from app.services.passwords import database_url_problems, system_secret_problems
+
+        problems = database_url_problems(self.database_url.get_secret_value())
+        problems += system_secret_problems("SUPABASE_SERVICE_ROLE_KEY", self.supabase_service_role_key.get_secret_value())
+        problems += system_secret_problems("SUPABASE_JWT_SECRET", self.supabase_jwt_secret.get_secret_value(), min_length=32)
+        if self.config_integrity_key is not None and self.config_integrity_key.get_secret_value():
+            problems += system_secret_problems("CONFIG_INTEGRITY_KEY", self.config_integrity_key.get_secret_value(),
+                                               min_length=32)
+        if problems:
+            raise ValueError("insecure production configuration: " + "; ".join(problems))
+        return self
+
 
     @property
     def is_production(self) -> bool:

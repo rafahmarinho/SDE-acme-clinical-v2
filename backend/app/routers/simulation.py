@@ -12,13 +12,15 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import Field
 
 from app.core.audit import record_event
-from app.core.security import CurrentPrincipal, Perm, Principal, require
+from app.core.security import CurrentPrincipal, Perm, Principal, require, require_recent_auth
 from app.db import fetch_one, transaction
 from app.schemas import Out, SimulationAdvanceIn, SimulationOut, SimulationResetIn, SimulationScenarioIn
 from app.services import alarms, resilience, simulation
 
 router = APIRouter(prefix="/v1/simulation", tags=["simulation"])
 Operator = Annotated[Principal, Depends(require(Perm.SIMULATION_CONTROL))]
+# Reset destroys demo data: step-up re-authentication (recent password/MFA) is required.
+ResetOperator = Annotated[Principal, Depends(require_recent_auth(Perm.SIMULATION_CONTROL))]
 
 SCENARIO_WARNING = ("Scenario changes alter the simulated readings of every affected monitor and will raise or clear "
                     "alarms on the next tick. This action is recorded in the audit log with your name and time.")
@@ -55,7 +57,7 @@ async def _state(conn) -> dict:
 
 @router.get("", response_model=SimulationOut)
 async def get_state(principal: CurrentPrincipal) -> SimulationOut:
-    async with transaction(principal) as conn:
+    async with transaction(principal, read_only=True) as conn:
         return SimulationOut(**await _state(conn))
 
 
@@ -84,7 +86,8 @@ async def advance(body: SimulationAdvanceIn, request: Request, principal: Operat
 
 
 @router.post("/reset", response_model=SimulationActionOut)
-async def reset(body: SimulationResetConfirmedIn, request: Request, principal: Operator) -> SimulationActionOut:
+async def reset(body: SimulationResetConfirmedIn, request: Request, principal: ResetOperator) -> SimulationActionOut:
+
     async with transaction(principal) as conn:
         await simulation.reset(conn, str(principal.user_id))
         await record_event(principal, "simulation.reset", "simulation", "1", details={"acknowledged": True}, conn=conn,

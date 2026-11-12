@@ -83,8 +83,11 @@ def install_error_handlers(app: FastAPI) -> None:
             message = MESSAGES["not_found"]
         if exc.status_code == 405:
             message = MESSAGES["method_not_allowed"]
-        return JSONResponse(error_body(request, message, code), status_code=exc.status_code,
-                            headers=getattr(exc, "headers", None))
+        headers = getattr(exc, "headers", None)
+        if exc.status_code == 401 and headers and "step_up_required" in headers.get("WWW-Authenticate", ""):
+            code = "step_up_required"  # the SPA re-authenticates and retries instead of signing out
+        return JSONResponse(error_body(request, message, code), status_code=exc.status_code, headers=headers)
+
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:

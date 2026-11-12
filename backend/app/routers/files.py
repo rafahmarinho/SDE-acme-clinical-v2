@@ -18,15 +18,17 @@ from urllib.parse import quote
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 
 from app.core.audit import notify_admins, record_event
 from app.core.config import get_settings
 from app.core.errors import DomainError
 from app.core.logging import sec_event
 from app.core.security import Perm, Principal, require
+from app.core.validation import safe_filename
 from app.db import fetch_all, fetch_one, transaction
-from app.schemas import AttachmentOut, SignedUrlOut
+from app.routers.break_glass import record_break_glass_use
+from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, AttachmentOut, Page, SignedUrlOut
 from app.services import files as file_service
 
 router = APIRouter(prefix="/v1/files", tags=["files"])
@@ -44,12 +46,18 @@ def _storage_client(timeout: float) -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=str(get_settings().supabase_url).rstrip("/"), timeout=timeout, verify=True)
 
 
-@router.get("/patients/{patient_id}", response_model=list[AttachmentOut])
-async def list_files(patient_id: UUID, principal: Annotated[Principal, Depends(require(Perm.PATIENT_READ))]) -> list[AttachmentOut]:
+@router.get("/patients/{patient_id}", response_model=Page[AttachmentOut])
+async def list_files(patient_id: UUID, request: Request,
+                     principal: Annotated[Principal, Depends(require(Perm.PATIENT_READ))],
+                     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = MAX_PAGE_SIZE,
+                     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0) -> Page[AttachmentOut]:
     async with transaction(principal) as conn:
         rows = await fetch_all(conn, """select id, original_name, content_type, size_bytes, created_at from public.attachments
-               where patient_id = %s order by created_at desc limit 100""", (str(patient_id),))
-    return [AttachmentOut(**r) for r in rows]
+               where patient_id = %s order by created_at desc, id limit %s offset %s""", (str(patient_id), limit + 1, offset))
+        if rows:
+            await record_break_glass_use(conn, principal, patient_id, "files.listed", request.state.request_id)
+    return Page[AttachmentOut](items=[AttachmentOut(**r) for r in rows[:limit]],
+                               next_offset=offset + limit if len(rows) > limit else None)
 
 
 async def _reject(principal: Principal, request: Request, patient_id: UUID, exc: file_service.FileRejected) -> None:
@@ -67,7 +75,8 @@ async def upload_file(patient_id: UUID, request: Request, principal: Annotated[P
                       file: Annotated[UploadFile, File()]) -> AttachmentOut:
     try:
         data = await file.read(file_service.MAX_BYTES + 1)
-        original = file_service.display_name(file.filename)
+        # Display-only name: basename, NFKC, conservative character set (never used as a storage key).
+        original = safe_filename(file_service.display_name(file.filename), default="upload")
     finally:
         await file.close()
     try:
@@ -93,6 +102,7 @@ async def upload_file(patient_id: UUID, request: Request, principal: Annotated[P
                 await record_event(principal, "file.uploaded", "patient", str(patient_id),
                                    details={"attachment_id": str(row["id"]), "content_type": mime, "size": len(data)},
                                    conn=conn, request_id=request.state.request_id)
+                await record_break_glass_use(conn, principal, patient_id, "file.uploaded", request.state.request_id)
             except BaseException:
                 # Compensate: do not leave an orphaned object without metadata/audit.
                 try:
@@ -121,6 +131,8 @@ async def signed_url(attachment_id: UUID, request: Request,
             raise DomainError("The file is temporarily unavailable.", 502)
         await record_event(principal, "file.accessed", "patient", str(row["patient_id"]),
                            details={"attachment_id": str(attachment_id)}, conn=conn, request_id=request.state.request_id)
+        await record_break_glass_use(conn, principal, row["patient_id"], "file.accessed", request.state.request_id)
+
     signed = resp.json().get("signedURL", "")
     if not isinstance(signed, str) or not signed.startswith(f"/object/sign/{BUCKET}/"):
         raise DomainError("The file is temporarily unavailable.", 502)

@@ -1,4 +1,8 @@
-"""API router: monitor maintenance tracking (biomedical technicians)."""
+"""API router: monitor maintenance tracking.
+
+Biomedical technicians record maintenance (maintenance:write); administrators and technicians may view the
+history (maintenance:read) - administrators never record it (separation of duties).
+"""
 
 from typing import Annotated
 from uuid import UUID
@@ -18,10 +22,10 @@ _SELECT = """select r.id, r.monitor_id, r.kind, r.notes, r.performed_at, r.next_
 
 @router.get("", response_model=Page[MaintenanceOut])
 async def list_maintenance(monitor_id: UUID,
-                           principal: Annotated[Principal, Depends(require(Perm.MAINTENANCE_WRITE))],
+                           principal: Annotated[Principal, Depends(require(Perm.MAINTENANCE_READ))],
                            limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
                            offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0) -> Page[MaintenanceOut]:
-    async with transaction(principal) as conn:
+    async with transaction(principal, read_only=True) as conn:
         rows = await fetch_all(conn, _SELECT + " where r.monitor_id = %s order by r.performed_at desc, r.id limit %s offset %s",
                                (str(monitor_id), limit + 1, offset))
     return Page[MaintenanceOut](items=[MaintenanceOut(**r) for r in rows[:limit]],

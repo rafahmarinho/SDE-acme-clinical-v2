@@ -29,6 +29,9 @@ const apiMock = vi.hoisted(() => ({
   wards: vi.fn(),
   inviteStaff: vi.fn(),
   updateStaff: vi.fn(),
+  roleRequests: vi.fn(async () => []),
+  requestRoleChange: vi.fn(),
+  approveRoleRequest: vi.fn(),
 }));
 const verifyCurrentPassword = vi.hoisted(() => vi.fn());
 const requestMock = vi.hoisted(() => vi.fn(async () => undefined));
@@ -114,9 +117,8 @@ describe("password masking", () => {
     inputs.forEach((el) => expect(el.type).toBe("password"));
   });
 
-  // Screens owned by other teams that still use masked raw inputs; migrate them to PasswordField and
-  // remove the entry (tracked as a cross-owner request). New entries must not be added.
-  const PENDING_MIGRATION = ["/Profile.tsx"];
+  // Every screen uses PasswordField; this list must stay empty.
+  const PENDING_MIGRATION: string[] = [];
 
   it("no raw password input exists outside PasswordField", () => {
     const sources = import.meta.glob("../**/*.tsx", { query: "?raw", import: "default", eager: true }) as Record<string, string>;

@@ -5,6 +5,7 @@
 // * Export and erasure require the current password (verified server-side, the session is not replaced).
 // * The e-mail address is the sign-in identifier: changes go through Supabase Auth's confirmation e-mail.
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { request } from "../services/api";
 import type { Me } from "../services/types";
@@ -77,6 +78,21 @@ export function PrivacyNotice() {
       <h3>Legal basis</h3>
       <p>{PRIVACY_NOTICE.legalBasis}</p>
     </article>
+  );
+}
+
+/** Public /privacy route (reachable before sign-in, linked from every page footer and the login screen). */
+export function PrivacyPage() {
+  return (
+    <main className="auth-page">
+      <div className="card">
+        <h1>Privacy notice</h1>
+        <PrivacyNotice />
+        <p>
+          <Link to="/">Back to ACME Clinical</Link>
+        </p>
+      </div>
+    </main>
   );
 }
 
@@ -237,6 +253,10 @@ function AccountCard({ me, locked, onSaved }: { me: ProfileMe; locked: boolean; 
           </button>
         </fieldset>
       </form>
+      <p>
+        <Link to="/reset-password">Change password</Link>
+        <span className="muted small"> (you will be asked for your current password)</span>
+      </p>
       {locked && <p className="muted small">Acknowledge the privacy notice to edit your profile.</p>}
       {status && <p role="status">{status}</p>}
     </div>

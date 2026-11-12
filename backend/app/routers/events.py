@@ -9,7 +9,8 @@
   integrity violations and malware detections (T431).
 """
 
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -18,23 +19,55 @@ from app.core import logging as app_logging
 from app.core.audit import record_event, verify_row
 from app.core.security import CurrentPrincipal, Perm, Principal, require
 from app.db import fetch_all, fetch_one, transaction
-from app.schemas import EventOut
+from app.schemas import EventOut, Out, Page
 from app.services import integrity
 
 Admin = Annotated[Principal, Depends(require(Perm.EVENTS_READ_ALL))]
 SIGNATURE_SAMPLE = 500
 
 router = APIRouter(prefix="/v1/events", tags=["events"])
+MAX_EVENT_ID = 2**63 - 1  # bigint upper bound: larger values would overflow the SQL parameter
 
 
-@router.get("", response_model=list[EventOut])
+class IntegrityOut(Out):
+    intact: bool
+    first_broken_id: int | None
+    chain_intact: bool
+    checked_records: int
+    signed_records: int
+    unsigned_records: int
+    invalid_signature_ids: list[int]
+    algorithm: str
+    key_id: str
+
+
+class SigningKeyOut(Out):
+    algorithm: str
+    key_id: str
+    public_key_pem: str
+
+
+class AlertOut(Out):
+    id: UUID
+    raised_at: datetime
+    kind: str
+    severity: str
+    details: dict[str, Any]
+    acknowledged_at: datetime | None
+
+
+class AlertPage(Page[AlertOut]):
+    process_failure_counters: dict[str, int]
+
+
+@router.get("", response_model=Page[EventOut])
 async def list_events(
     principal: CurrentPrincipal,
     action: Annotated[str | None, Query(pattern=r"^[a-z_]+(\.[a-z_]+)?$", max_length=60)] = None,
     entity_type: Annotated[str | None, Query(pattern=r"^[a-z_]+$", max_length=40)] = None,
-    before_id: Annotated[int | None, Query(ge=1)] = None,
+    before_id: Annotated[int | None, Query(ge=1, le=MAX_EVENT_ID)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> list[EventOut]:
+) -> Page[EventOut]:
     # RLS limits non-admins to their own events.
     async with transaction(principal) as conn:
         rows = await fetch_all(conn, """
@@ -45,11 +78,13 @@ async def list_events(
               and (%(before)s::bigint is null or id < %(before)s)
             order by id desc limit %(limit)s""",
                                {"action": action, "prefix": f"{action}.%" if action and "." not in action else "",
-                                "etype": entity_type, "before": before_id, "limit": limit})
-    return [EventOut(**r) for r in rows]
+                                "etype": entity_type, "before": before_id, "limit": limit + 1})
+    items = [EventOut(**r) for r in rows[:limit]]
+    # Keyset pagination: the next page is requested with before_id=<last id>; next_offset carries that id.
+    return Page[EventOut](items=items, next_offset=items[-1].id if len(rows) > limit and items else None)
 
 
-@router.get("/integrity")
+@router.get("/integrity", response_model=IntegrityOut)
 async def verify_integrity(request: Request, principal: Admin,
                            limit: Annotated[int, Query(ge=1, le=SIGNATURE_SAMPLE)] = SIGNATURE_SAMPLE) -> dict:
     async with transaction(principal) as conn:
@@ -70,14 +105,15 @@ async def verify_integrity(request: Request, principal: Admin,
     return result
 
 
-@router.get("/signing-key")
+@router.get("/signing-key", response_model=SigningKeyOut)
 async def signing_key(principal: Admin) -> dict:
     return {"algorithm": integrity.SIGNATURE_ALGORITHM, "key_id": integrity.key_id(),
             "public_key_pem": integrity.public_key_pem()}
 
 
-@router.get("/alerts")
+@router.get("/alerts", response_model=AlertPage)
 async def list_alerts(principal: Admin, include_acknowledged: bool = False,
+
                       limit: Annotated[int, Query(ge=1, le=100)] = 50) -> dict:
     async with transaction(principal) as conn:
         rows = await fetch_all(conn, """

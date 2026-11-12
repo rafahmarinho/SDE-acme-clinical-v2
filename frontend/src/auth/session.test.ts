@@ -11,7 +11,7 @@ vi.mock("../lib/supabase", () => ({
 }));
 vi.mock("../services/api", () => ({ request: mocks.request }));
 
-import { clearBrowserData, performLogout, signedOutMessage, takeSignedOutReason } from "./session";
+import { clearBrowserData, performLogout, signedOutMessage, takeSignedOutReason, rememberSignedOutReason, signedOutPath } from "./session";
 
 const TOKEN_KEY = "sb-example-auth-token";
 
@@ -38,7 +38,7 @@ describe("performLogout (T26/T93/T1540)", () => {
     expect(sessionStorage.getItem("acme.patientCache")).toBeNull();
     expect(localStorage.length).toBe(0);
     expect(document.cookie).toBe("");
-    expect(navigate).toHaveBeenCalledWith("/login");
+    expect(navigate).toHaveBeenCalledWith("/signed-out?reason=user");
     expect(takeSignedOutReason()).toBe("user");
     expect(takeSignedOutReason()).toBeNull(); // shown once
   });
@@ -54,7 +54,7 @@ describe("performLogout (T26/T93/T1540)", () => {
     await performLogout({ reason: "idle", navigate });
     expect(mocks.signOut).toHaveBeenCalled();
     expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull();
-    expect(navigate).toHaveBeenCalledWith("/login");
+    expect(navigate).toHaveBeenCalledWith("/signed-out?reason=idle");
   });
 
   it("does not call the API again after a 401 (session already ended server-side)", async () => {
@@ -84,5 +84,15 @@ describe("signed-out messages", () => {
     expect(signedOutMessage("expired")).toMatch(/maximum duration/);
     expect(signedOutMessage("revoked")).toMatch(/another device/);
     expect(signedOutMessage(null)).toBeNull();
+  });
+});
+
+describe("/signed-out hand-off (S2)", () => {
+  it("re-stores only allow-listed reasons", () => {
+    rememberSignedOutReason("idle");
+    expect(takeSignedOutReason()).toBe("idle");
+    rememberSignedOutReason("<script>");
+    expect(takeSignedOutReason()).toBeNull();
+    expect(signedOutPath("expired")).toBe("/signed-out?reason=expired");
   });
 });

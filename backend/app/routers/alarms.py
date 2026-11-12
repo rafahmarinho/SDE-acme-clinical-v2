@@ -21,7 +21,8 @@ from pydantic import Field
 from app.core.audit import record_event
 from app.core.security import Perm, Principal, require
 from app.db import fetch_all, fetch_one, transaction
-from app.schemas import AlarmAck, AlarmOut, Out, Page
+from app.routers.break_glass import record_break_glass_use
+from app.schemas import MAX_OFFSET, MAX_PAGE_SIZE, AlarmAck, AlarmOut, Out, Page
 from app.services import alarms as alarm_service
 from app.services import resilience
 
@@ -73,25 +74,41 @@ async def _run_watchdog(conn) -> None:
         log.error("watchdog_failed", extra={"error_type": type(exc).__name__})
 
 
-@router.get("", response_model=list[AlarmOut])
+class SystemStatusOut(Out):
+    mode: Literal["normal", "degraded"]
+    shed_classes: list[str]
+    checked_at: str
+
+
+@router.get("", response_model=Page[AlarmOut])
 async def list_alarms(
     principal: Annotated[Principal, Depends(require(Perm.ALARM_READ))],
     state: Literal["active", "resolved", "all"] = "active",
     ward_id: UUID | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> list[AlarmOut]:
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
+    offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
+) -> Page[AlarmOut]:
     async with transaction(principal) as conn:
         await _run_watchdog(conn)
         rows = await fetch_all(conn, _SELECT + """
             where (%(state)s = 'all' or a.state::text = %(state)s)
               and (%(ward)s::uuid is null or p.ward_id = %(ward)s::uuid)
-            order by (a.state = 'active') desc, array_position(array['high','medium','low'], a.priority::text), a.raised_at desc
-            limit %(limit)s""", {"state": state, "ward": str(ward_id) if ward_id else None, "limit": limit})
-    return [AlarmOut(**r) for r in rows]
+            order by (a.state = 'active') desc, array_position(array['high','medium','low'], a.priority::text), a.raised_at desc,
+                     a.id
+            limit %(limit)s offset %(offset)s""",
+                               {"state": state, "ward": str(ward_id) if ward_id else None, "limit": limit + 1,
+                                "offset": offset})
+    return Page[AlarmOut](items=[AlarmOut(**r) for r in rows[:limit]],
+                          next_offset=offset + limit if len(rows) > limit else None)
+
+
+MAX_MONITOR_STATES = 200
 
 
 @router.get("/monitor-states", response_model=Page[MonitorStateOut])
-async def monitor_states(principal: Annotated[Principal, Depends(require(Perm.ALARM_READ))]) -> Page[MonitorStateOut]:
+async def monitor_states(principal: Annotated[Principal, Depends(require(Perm.ALARM_READ))],
+                         limit: Annotated[int, Query(ge=1, le=MAX_MONITOR_STATES)] = MAX_MONITOR_STATES,
+                         offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0) -> Page[MonitorStateOut]:
     async with transaction(principal) as conn:
         await _run_watchdog(conn)
         rows = await fetch_all(conn, """
@@ -100,15 +117,15 @@ async def monitor_states(principal: Annotated[Principal, Depends(require(Perm.AL
             from public.monitors m
             left join public.alarms a on a.monitor_id = m.id and a.state = 'active'
             where m.status <> 'retired'
-            group by m.id order by m.serial limit 200""")
+            group by m.id order by m.serial, m.id limit %s offset %s""", (limit + 1, offset))
     now = datetime.now(UTC)
     return Page[MonitorStateOut](items=[
         MonitorStateOut(**r, **alarm_service.monitor_state(r["status"], r["battery_pct"], r["last_heartbeat_at"], now,
                                                            set(r["active_alarm_types"])))
-        for r in rows])
+        for r in rows[:limit]], next_offset=offset + limit if len(rows) > limit else None)
 
 
-@router.get("/system-status")
+@router.get("/system-status", response_model=SystemStatusOut)
 async def system_status(principal: Annotated[Principal, Depends(require(Perm.ALARM_READ))]) -> dict:
     """Explicit operating mode for the UI banner; never depends on the database being reachable."""
     return {**resilience.mode(), "checked_at": datetime.now(UTC).isoformat(timespec="milliseconds")}
@@ -118,8 +135,8 @@ async def system_status(principal: Annotated[Principal, Depends(require(Perm.ALA
 async def acknowledge_alarm(alarm_id: UUID, body: AlarmAckIn, request: Request,
                             principal: Annotated[Principal, Depends(require(Perm.ALARM_ACK))]) -> AlarmAckOut:
     async with transaction(principal) as conn:
-        existing = await fetch_one(conn, "select id, state::text as state, acknowledged_at from public.alarms where id = %s for update",
-                                   (str(alarm_id),))
+        existing = await fetch_one(conn, "select id, patient_id, state::text as state, acknowledged_at from public.alarms "
+                                         "where id = %s for update", (str(alarm_id),))
         if existing is None:
             raise HTTPException(404, "Alarm not found.")
         notice = ALREADY_ACK_NOTICE
@@ -133,7 +150,11 @@ async def acknowledge_alarm(alarm_id: UUID, body: AlarmAckIn, request: Request,
         else:
             await record_event(principal, "alarm.ack_rejected", "alarm", str(alarm_id), outcome="failure",
                                error_code="already_acknowledged", conn=conn, request_id=request.state.request_id)
+        if existing.get("patient_id"):
+            await record_break_glass_use(conn, principal, existing["patient_id"], "alarm.acknowledged",
+                                         request.state.request_id)
         row = await fetch_one(conn, _SELECT + " where a.id = %s", (str(alarm_id),))
     return AlarmAckOut(**row, notice=notice)
+
 
 

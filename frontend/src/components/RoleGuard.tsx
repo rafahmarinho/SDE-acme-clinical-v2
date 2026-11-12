@@ -23,7 +23,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: "/team", label: "Team", requires: ["staff:manage"] },
   { to: "/simulation", label: "Simulation", requires: ["simulation:control"] },
   { to: "/events", label: "Events", requires: [] },
-  { to: "/settings", label: "Settings", requires: [] },
+  { to: "/settings", label: "Settings", requires: ["settings:manage"] },
   { to: "/profile", label: "Profile", requires: [] },
 ];
 
@@ -54,12 +54,19 @@ export function RoleGuard({ requires, children, fallback = null }: RoleGuardProp
   return <>{hasAll(me?.permissions, requires) ? children : fallback}</>;
 }
 
+/** Screens reachable while the privacy notice still awaits acknowledgement. */
+export const PRIVACY_GATE_EXEMPT: readonly string[] = ["/profile", "/privacy"];
+
 /** Route guard: requires a signed-in user with a loaded profile, plus optional permissions. */
 export function RequireAuth({ requires = [], children }: { requires?: Permission[]; children: ReactNode }) {
   const { status, me } = useAuth();
   const location = useLocation();
   if (status === "loading") return <LoadingState label="Loading your session…" />;
   if (status !== "signed_in" || !me) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  // Privacy notice before use (T239/T751): until the current notice is acknowledged, only /profile opens.
+  if (me.privacy_notice_required === true && !PRIVACY_GATE_EXEMPT.includes(location.pathname)) {
+    return <Navigate to="/profile" replace state={{ from: location.pathname }} />;
+  }
   if (!hasAll(me.permissions, requires)) {
     return (
       <section className="card" role="alert">

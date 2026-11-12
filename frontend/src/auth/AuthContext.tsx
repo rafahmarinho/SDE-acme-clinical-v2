@@ -26,6 +26,12 @@ export interface AuthState {
   /** Absolute session expiry (ISO time) and whether the "ending soon" warning is due. */
   sessionExpiresAt?: string | null;
   expiryWarning?: boolean;
+  /**
+   * After a successful MFA challenge (sign-in or step-up): register the now two-factor session with the API,
+   * show the previous-login notice and reload the profile (administrators get 403 at aal1). Idempotent per
+   * challenge: the MFA_CHALLENGE_VERIFIED auth event and the Login screen share one run.
+   */
+  completeMfa?: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthState | null>(null);
@@ -47,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadedFor = useRef<string | null>(null);
   // One registration per Supabase session, shared by signIn and the session effect.
   const registration = useRef<{ uid: string; promise: Promise<SessionInfo> } | null>(null);
+  const mfaRegistration = useRef<Promise<void> | null>(null);
 
   const ensureRegistered = useCallback((uid: string): Promise<SessionInfo> => {
     if (registration.current?.uid !== uid) {
@@ -60,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resetState = useCallback(() => {
     loadedFor.current = null;
     registration.current = null;
+    mfaRegistration.current = null;
     setMe(null);
     setLoginNotice(null);
     setExpiresAt(null);
@@ -104,6 +112,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const completeMfa = useCallback((): Promise<void> => {
+    if (!mfaRegistration.current) {
+      const run = (async () => {
+        try {
+          const info = await registerSession(); // aal2 session: register / refresh it server-side
+          setExpiresAt(info.expires_at ?? null);
+          setLoginNotice(info);
+        } catch {
+          // a 401 already ran the logout handler; the profile load below reports other failures
+        }
+        await loadMe();
+      })();
+      mfaRegistration.current = run;
+      // Allow a later challenge (e.g. step-up re-verification) to register again once this one finished.
+      void run.finally(() => {
+        window.setTimeout(() => {
+          if (mfaRegistration.current === run) mfaRegistration.current = null;
+        }, 2000);
+      });
+    }
+    return mfaRegistration.current;
+  }, [loadMe]);
+  const completeMfaRef = useRef(completeMfa);
+  completeMfaRef.current = completeMfa;
+
   useEffect(() => {
     let active = true;
     void supabase.auth.getSession().then(({ data }) => {
@@ -114,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next);
       if (event === "SIGNED_OUT" || !next) resetState();
+      else if (event === "MFA_CHALLENGE_VERIFIED") void completeMfaRef.current();
     });
     return () => {
       active = false;
@@ -140,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       loadedFor.current = null; // force a fresh registration + GET /v1/me for this sign-in
       registration.current = null;
+      mfaRegistration.current = null;
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError || !data.user) {
         // Generic message: do not reveal whether the account exists or is locked.
@@ -192,8 +227,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       can,
       sessionExpiresAt: expiresAt,
       expiryWarning,
+      completeMfa,
     }),
-    [status, session, me, error, loginNotice, signIn, signOut, loadMe, can, expiresAt, expiryWarning],
+    [status, session, me, error, loginNotice, signIn, signOut, loadMe, can, expiresAt, expiryWarning, completeMfa],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
