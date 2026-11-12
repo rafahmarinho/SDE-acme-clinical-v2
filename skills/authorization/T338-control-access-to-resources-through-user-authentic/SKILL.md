@@ -57,4 +57,4 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Perm]] = {        # deny by default: abse
 - [ ] Pytest: admin with a login older than `STEP_UP_MAX_AGE` gets 401 `step_up_required` on `PATCH /settings/security` and `POST /simulation/reset`.
 - [ ] Frontend test: a logout control is present on all authenticated layouts.
 
-**Status:** Pending
+**Status:** Applied

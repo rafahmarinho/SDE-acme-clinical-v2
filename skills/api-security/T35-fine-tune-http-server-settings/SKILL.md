@@ -58,4 +58,4 @@ class RequestShapeMiddleware:
 - [ ] `backend/vercel.json` defines `maxDuration`; DB statements exceeding `statement_timeout` fail with a generic 503/504.
 - [ ] Admin notification is triggered (and rate-limited) on violations.
 
-**Status:** Pending
+**Status:** Applied

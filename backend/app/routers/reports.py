@@ -17,8 +17,9 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
 from app.core.audit import record_event
+from app.core.ratelimit import enforce_shared_limit
 from app.core.security import Perm, Principal, require
-from app.db import transaction
+from app.db import fetch_one, transaction
 from app.schemas import Out, ReportOut
 from app.services import privacy, reports
 
@@ -63,6 +64,7 @@ async def ward_activity(request: Request, principal: Annotated[Principal, Depend
                         ward_id: UUID | None = None, hours: int = 24) -> ReportOut:
     start, end = _window(hours)
     async with transaction(principal) as conn:
+        await enforce_shared_limit(conn, "reports", fetch_one)
         data = await reports.ward_activity(conn, str(ward_id) if ward_id else None, start, end)
         await record_event(principal, "report.generated", "report", "ward_activity",
                            details={"ward_id": str(ward_id) if ward_id else None, "hours": hours}, conn=conn,
@@ -78,6 +80,7 @@ async def audit_report(request: Request, principal: Annotated[Principal, Depends
     start, end = _window(hours)
     actions = _check_actions(actions)
     async with transaction(principal) as conn:
+        await enforce_shared_limit(conn, "reports", fetch_one)
         data = await reports.audit_summary(conn, start, end, actions, str(actor_id) if actor_id else None, outcome)
         await record_event(principal, "report.generated", "report", "audit",
                            details={"hours": hours, "actions": len(actions), "outcome": outcome}, conn=conn,
@@ -96,6 +99,7 @@ async def export_csv(kind: reports.ReportKind, request: Request,
 
         raise FORBIDDEN
     async with transaction(principal) as conn:
+        await enforce_shared_limit(conn, "reports", fetch_one)
         if kind is reports.ReportKind.audit_events:
             columns, rows = reports.AUDIT_COLUMNS, await reports.audit_rows(conn, start, end)
         else:

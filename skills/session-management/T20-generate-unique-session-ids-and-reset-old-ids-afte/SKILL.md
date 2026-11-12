@@ -51,4 +51,4 @@ async def apply_role_change(conn, user_id: UUID, new_role: Role):
 - [ ] Pytest: approving a role change revokes all prior sessions of that user.
 - [ ] Frontend test (`frontend/src/auth/session.test.ts`): login triggers session registration; tokens are never placed in URLs.
 
-**Status:** Pending
+**Status:** Applied

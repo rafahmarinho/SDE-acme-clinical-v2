@@ -31,6 +31,7 @@ from typing import IO, Any
 
 from psycopg import AsyncConnection
 
+from app.core.errors import DomainError
 from app.db import fetch_all, fetch_one
 
 TMP_ROOT = Path(tempfile.gettempdir()) / "acme-reports"
@@ -154,7 +155,10 @@ AUDIT_COLUMNS = ("id", "occurred_at", "actor_id", "actor_role", "action", "entit
 
 async def audit_rows(conn: AsyncConnection, start: datetime, end: datetime, actions: Sequence[str] = (),
                      actor_id: str | None = None, outcome: str | None = None, limit: int = MAX_AUDIT_ROWS) -> list[dict]:
-    return await fetch_all(conn, """
+    """Audit rows in the window. Fetches ``limit + 1`` and refuses (422 ``result_too_large``) instead of silently
+    truncating, so a report never presents a partial period as complete (T2600)."""
+    limit = min(limit, MAX_AUDIT_ROWS)
+    rows = await fetch_all(conn, """
         select id, occurred_at, actor_id::text as actor_id, actor_role::text as actor_role, action, entity_type,
                entity_id, outcome, error_code, source_ip, request_id
         from public.events
@@ -164,7 +168,11 @@ async def audit_rows(conn: AsyncConnection, start: datetime, end: datetime, acti
           and (%(outcome)s::text is null or outcome = %(outcome)s)
         order by id
         limit %(limit)s""", {"start": start, "end": end, "actions": list(actions), "actor": actor_id,
-                             "outcome": outcome, "limit": min(limit, MAX_AUDIT_ROWS)})
+                             "outcome": outcome, "limit": limit + 1})
+    if len(rows) > limit:
+        raise DomainError("The report period contains too many records. Choose a shorter period or add filters.",
+                          422, "result_too_large")
+    return rows
 
 
 def summarize_audit(rows: Sequence[dict], start: datetime, end: datetime, chain_broken_at: int | None) -> dict:
@@ -174,7 +182,8 @@ def summarize_audit(rows: Sequence[dict], start: datetime, end: datetime, chain_
     failures = Counter(r["actor_id"] or "system" for r in rows if r["outcome"] in ("failure", "denied"))
     acked = {r["entity_id"] for r in rows if r["action"] == "alarm.acknowledged"}
     return {
-        "period_start": start, "period_end": end, "total": len(rows), "truncated": len(rows) >= MAX_AUDIT_ROWS,
+        # "truncated" stays False: oversized periods are refused by audit_rows (result_too_large).
+        "period_start": start, "period_end": end, "total": len(rows), "truncated": False,
         "first_id": rows[0]["id"] if rows else None, "last_id": rows[-1]["id"] if rows else None,
         "totals_by_action": dict(by_action), "totals_by_actor": dict(by_actor), "totals_by_outcome": dict(by_outcome),
         "suspicious_actors": sorted(a for a, n in failures.items() if n >= SUSPICIOUS_FAILURES),

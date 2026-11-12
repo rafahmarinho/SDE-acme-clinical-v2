@@ -19,6 +19,13 @@ describe("Supabase browser client configuration", () => {
     expect(options.cookies).toBeUndefined();
   });
 
+  it("never places auth tokens in localStorage, IndexedDB or cookies (T1468)", () => {
+    expect(options.auth.persistSession).toBe(true); // a reload keeps the session ...
+    expect(options.auth.storage).toBe(window.sessionStorage); // ... only for the lifetime of the tab
+    expect(Object.keys(window.localStorage).filter((k) => k.startsWith("sb-"))).toEqual([]);
+    expect(document.cookie).not.toMatch(/sb-|access_token|refresh_token/);
+  });
+
   it("uses PKCE so recovery links carry a one-time code instead of tokens", () => {
     expect(options.auth.flowType).toBe("pkce");
     expect(options.auth.detectSessionInUrl).toBe(true);

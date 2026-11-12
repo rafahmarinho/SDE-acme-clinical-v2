@@ -57,4 +57,4 @@ class Settings(BaseSettings):
 - [ ] Pytest (`backend/tests/test_logging_audit.py`): a log line containing a DSN is emitted with credentials redacted.
 - [ ] No module other than `config.py`/`db.py` reads `DATABASE_URL`.
 
-**Status:** Pending
+**Status:** Applied

@@ -48,3 +48,21 @@ least once per release cycle.
 | Date | Type | Duration | Result / issues | Runbook updated |
 |---|---|---|---|---|
 | _pending first run_ | rebuild from git | | | |
+
+## Throttling and cost controls (T1362)
+
+In the repository: per-instance token buckets (`backend/app/core/middleware.py`), a shared per-user budget in
+PostgreSQL for simulation, reports and uploads (`backend/app/core/ratelimit.py`, migration `0009_rate_limits.sql`),
+and Supabase Auth limits in `supabase/config.toml` `[auth.rate_limit]`. Hosted settings an operator must apply and
+record here (they cannot be set from this repo):
+
+- Vercel Firewall: a rate-limit rule on the API project (e.g. 300 requests/min per IP on `/v1/*`, 20/min on
+  `/v1/auth/*`), action "deny" with 429.
+- Vercel Spend Management: a monthly spend limit plus usage notifications for both projects.
+- Supabase: usage/billing alerts and the Auth rate limits of the hosted project matching `config.toml`.
+
+| Date | Setting | Value | Applied by |
+|---|---|---|---|
+| _pending_ | Vercel Firewall rate-limit rule | | |
+| _pending_ | Vercel spend limit / usage alerts | | |
+| _pending_ | Supabase usage alerts | | |

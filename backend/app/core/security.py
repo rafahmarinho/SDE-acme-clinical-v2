@@ -193,7 +193,10 @@ async def get_principal(
     if now - auth_time > int(sec["session_absolute_hours"]) * 3600:
         raise _UNAUTHORIZED  # absolute session timeout: user must sign in again
 
-    role = Role(identity["role"])
+    try:
+        role = Role(identity["role"])
+    except ValueError:  # a role outside the reviewed permission table gets nothing (fail closed, T338)
+        raise _UNAUTHORIZED from None
     aal = str(claims.get("aal", "aal1"))
     if role is Role.ADMIN and sec["require_mfa_for_admin"] and aal != "aal2":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Multi-factor authentication is required.")

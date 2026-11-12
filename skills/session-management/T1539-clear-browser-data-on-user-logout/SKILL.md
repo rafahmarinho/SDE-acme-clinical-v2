@@ -54,4 +54,4 @@ export async function logout(): Promise<void> {
 - [ ] `frontend/vercel.json` serves `/logged-out` with `Clear-Site-Data`.
 - [ ] Vitest (`frontend/src/auth/session.test.ts`): after `logout()`, `sessionStorage`/`localStorage` contain no `sb-*` keys and no Realtime channels remain.
 
-**Status:** Pending
+**Status:** Applied

@@ -54,4 +54,4 @@ def private_workdir():
 - [ ] SQL check: `select public from storage.buckets where id = 'clinical-files'` is false; `monitors` has no plaintext secret column.
 - [ ] `pnpm build` output contains no service-role key or `AUDIT_SIGNING_KEY` (grep on `frontend/dist`).
 
-**Status:** Pending
+**Status:** Applied

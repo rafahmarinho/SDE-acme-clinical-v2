@@ -62,4 +62,4 @@ async def get_json(path: str) -> dict:
 - [ ] Unit test (`backend/tests/test_input_validation.py`): `checked_url` rejects `http://`, `file://`, `gopher://`, `https://169.254.169.254/`, `https://evil.example/`, `https://user:pw@<supabase-host>/`.
 - [ ] All outbound clients use `follow_redirects=False`, TLS verification and timeouts.
 
-**Status:** Pending
+**Status:** Applied

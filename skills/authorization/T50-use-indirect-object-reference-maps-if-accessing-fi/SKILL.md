@@ -50,4 +50,4 @@ def new_object_path(patient_id: UUID, ext: str) -> str:
 - [ ] Pytest (`backend/tests/test_files.py`): `safe_object_path("patients/../secrets")` and non-UUID paths raise; signed URL for another ward's attachment -> 404.
 - [ ] Storage policy test: an `authenticated` client cannot `download` from `clinical-files` directly.
 
-**Status:** Pending
+**Status:** Applied

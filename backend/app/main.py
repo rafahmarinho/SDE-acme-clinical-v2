@@ -61,7 +61,8 @@ def create_app() -> FastAPI:
         max_age=600,
     )
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_bytes, upload_max_bytes=settings.max_upload_bytes)
-    app.add_middleware(SecurityHeadersMiddleware, allowed_hosts=settings.allowed_hosts or None)
+    app.add_middleware(SecurityHeadersMiddleware, allowed_hosts=settings.allowed_hosts or None,
+                       allowed_origins=settings.origins)
 
     for module in (auth, profile, wards, patients, observations, alarms, thresholds, monitors, maintenance, staff,
                    settings_router, simulation, events, reports, break_glass, files, csp_report):

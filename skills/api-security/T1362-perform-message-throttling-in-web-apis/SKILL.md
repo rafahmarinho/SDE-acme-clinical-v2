@@ -59,4 +59,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 - [ ] Limits are enforced across instances (shared store) and per user, not only per IP.
 - [ ] `supabase/config.toml` sets explicit `[auth.rate_limit]` values.
 
-**Status:** Pending
+**Status:** Applied
+
+**Remaining gap (hosted settings, not code-fixable here):** the Vercel Firewall rate-limit rule, Vercel spend
+limit / usage alerts and Supabase usage alerts must be configured in the hosted dashboards and recorded in
+`docs/security/deployment.md` ("Throttling and cost controls"). The in-repo controls (per-instance buckets,
+shared per-user PostgreSQL budget via migration 0009, `[auth.rate_limit]`) are implemented and tested.

@@ -61,4 +61,4 @@ max_rows = 200
 - [ ] Pytest: audit report over a range with `MAX_AUDIT_ROWS + 1` rows returns 422 `result_too_large`.
 - [ ] `supabase/config.toml` has an explicit `max_rows`.
 
-**Status:** Pending
+**Status:** Applied

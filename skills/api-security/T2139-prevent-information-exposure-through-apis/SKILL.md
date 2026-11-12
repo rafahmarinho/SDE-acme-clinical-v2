@@ -55,4 +55,4 @@ async def list_staff(principal: Principal = Depends(require(Perm.staff_read)), .
 - [ ] Pytest: nurse calling `GET /staff` receives `email: null`; administrator receives emails.
 - [ ] A forced 500 returns only `{"error": {"code", "message", "request_id"}}`; `/openapi.json` returns 404 in production settings.
 
-**Status:** Pending
+**Status:** Applied

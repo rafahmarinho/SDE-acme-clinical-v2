@@ -65,4 +65,4 @@ class ObservationIn(Strict):
 - [ ] Every `str`/`list` field in request models has a maximum length (introspection test).
 - [ ] Storage bucket `file_size_limit` matches `MAX_BYTES`.
 
-**Status:** Pending
+**Status:** Applied

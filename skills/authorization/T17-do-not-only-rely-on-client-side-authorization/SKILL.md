@@ -59,4 +59,4 @@ export function RoleGuard({ allow, children }: { allow: Role[]; children: ReactN
 - [ ] Pytest: nurse token calling `POST /simulation/reset`, `PATCH /settings/security`, `POST /staff` -> 403 even with a forged `role` in the body or token metadata.
 - [ ] `frontend/src/components/RoleGuard.test.tsx` confirms UX hiding; no API security depends on it.
 
-**Status:** Pending
+**Status:** Applied

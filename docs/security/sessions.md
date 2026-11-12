@@ -45,6 +45,20 @@ Covers skills/session-management (T22-T28, T86-T95, T404, T405, T429, T430, T557
 * Ward workstations: turn off the browser's "continue where you left off" / session restore by policy. Restoring a session would bring back `sessionStorage`.
 * Each tab that signs in on its own counts as a session against the concurrent limit.
 
+## Decision: sensitive data at rest in the browser (T1468)
+
+Nothing sensitive is kept at rest in the browser except the Supabase session (access + refresh token) in
+`sessionStorage`, which ends with the tab and is wiped on sign-out. Patient data, vitals, observations and reports
+live only in React state and are re-fetched after a reload; there is no service worker, IndexedDB or Cache Storage
+use (enforced by `frontend/src/security.test.tsx`). The session is not additionally encrypted in JavaScript: the
+key would have to live in the same page context, so it would not stop XSS (mitigated by the strict CSP) and adds no
+protection against someone at the unlocked workstation. If a future feature must keep sensitive data across a
+reload, use a single WebCrypto AES-GCM module with a non-extractable in-memory key, as described in
+`skills/session-management/T1468-*/SKILL.md`.
+
+Manual check per release: sign in, browse patients, then DevTools > Application: only `sb-*-auth-token` in
+Session Storage, nothing in Local Storage, IndexedDB, Cache Storage or cookies.
+
 ## Tests
 
 * `backend/tests/test_sessions.py`: covers the session policy, idle and absolute timeouts with simulated time, the concurrent limit, registration keyed on `session_id`, the logout headers and replay, query-string tokens, cookies, and remember-me.

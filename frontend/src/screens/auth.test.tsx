@@ -291,3 +291,42 @@ describe("team invitations", () => {
     expect(apiMock.inviteStaff).toHaveBeenCalledWith(expect.objectContaining({ email: "new.person@acme-clinical.org" }));
   });
 });
+
+describe("DOM-based XSS sources (T37)", () => {
+  const PAYLOAD = "<img src=x onerror=alert(1)>";
+
+  it("an error_description in the recovery URL fragment is never rendered", async () => {
+    window.history.replaceState(null, "", `/reset-password#error=access_denied&error_description=${encodeURIComponent(PAYLOAD)}`);
+    const { container } = renderWithAuth(<ResetPassword />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.innerHTML).not.toContain("onerror");
+    expect(container.textContent ?? "").not.toContain(PAYLOAD);
+  });
+
+  it("a query-string payload on the login screen creates no element and is not echoed", async () => {
+    window.history.replaceState(null, "", `/login?next=${encodeURIComponent("javascript:alert(1)")}&msg=${encodeURIComponent(PAYLOAD)}`);
+    const { container } = renderWithAuth(<Login />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(container.textContent ?? "").not.toContain(PAYLOAD);
+  });
+});
+
+describe("session registration on sign-in (T20)", () => {
+  it("registers the fresh Supabase session with the API and never puts tokens in the URL", async () => {
+    const session = { access_token: "eyJ.secret-access.token", refresh_token: "refresh-secret", user: SESSION.user };
+    auth.signInWithPassword.mockResolvedValue({ data: { session, user: session.user }, error: null });
+    auth.getSession.mockResolvedValue({ data: { session } });
+    renderWithAuth(<Login />);
+    await submitLogin("nora.lindqvist@acme-clinical.org", "Violet-Harbor-82");
+    await waitFor(() => expect(requestMock).toHaveBeenCalledWith("POST", "/v1/auth/session"));
+    expect(window.location.href).not.toMatch(/secret-access|refresh-secret|access_token|refresh_token/);
+    for (const call of requestMock.mock.calls as unknown[][]) expect(String(call[1])).not.toMatch(/token/i);
+  });
+});

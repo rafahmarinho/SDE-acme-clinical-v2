@@ -628,6 +628,8 @@ def test_t599_no_host_or_referer_in_links_or_decisions():
         source = path.read_text(encoding="utf-8")
         if path.name == "middleware.py":  # the Host allow-list validator itself reads Host only to reject it
             source = source.replace('request.headers.get("host", "")', "")
+            # the CSRF Origin check (T29) reads Origin only to REJECT writes; it never grants access
+            source = source.replace('request.headers.get("origin")', "")
         for pattern in (r"request\.base_url", r"url_for\(", r"headers\.get\(\s*[\"'](host|referer|origin|x-forwarded-host)[\"']",
                         r"headers\[\s*[\"'](host|referer|origin|x-forwarded-host)[\"']"):
             assert not re.search(pattern, source, re.I), (path.name, pattern)
@@ -767,3 +769,105 @@ def test_t2609_every_collection_route_has_bounded_limit():
                 continue  # fixed server-side LIMIT (readings param max 120; files LIMIT 100)
             unbounded.add(route.path)
     assert unbounded <= KNOWN_UNBOUNDED_ELSEWHERE, unbounded
+
+
+# --------------------------------------------------------------------------- T1144 SSTI (report output)
+@pytest.mark.parametrize("payload", ["{{7*7}}", "{0.__class__}", "${7*7}", "{% for x in () %}{% endfor %}", "%(x)s"])
+def test_t1144_template_syntax_in_report_values_is_written_literally(payload):
+    from app.services import reports
+
+    path, cleanup = reports.build_csv_export(("ward", "body"), [{"ward": payload, "body": f"title {payload}"}])
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    finally:
+        cleanup()
+    assert payload in text and f"title {payload}" in text
+    assert "49" not in text and "<class" not in text and "str'" not in text
+
+
+# --------------------------------------------------------------------------- T1365 SSRF (outbound policy)
+@pytest.mark.parametrize("url", ["http://test-project.supabase.co/", "file:///etc/passwd", "gopher://test-project.supabase.co/",
+                                 "https://169.254.169.254/latest/meta-data/", "https://evil.example/",
+                                 "https://user:pw@test-project.supabase.co/", "https://test-project.supabase.co.evil.example/",
+                                 "https://test-project.supabase.co:8443/", "https://127.0.0.1/"])
+def test_t1365_checked_url_rejects_non_supabase_destinations(url):
+    from app.core.outbound import OutboundURLRejected, checked_url
+
+    with pytest.raises(OutboundURLRejected):
+        checked_url(url)
+
+
+def test_t1365_checked_url_accepts_configured_origin_and_clients_are_hardened():
+    from app.core.outbound import checked_url, supabase_client
+    from app.routers.files import _storage_client
+    from app.routers.staff import supabase_admin_client
+    from app.services.privacy import _supabase_client
+
+    assert checked_url("https://test-project.supabase.co/storage/v1") == "https://test-project.supabase.co/storage/v1"
+    for client in (supabase_client(5), _storage_client(5), supabase_admin_client(get_settings()), _supabase_client()):
+        assert client.follow_redirects is False
+        assert str(client.base_url).startswith("https://test-project.supabase.co")
+        assert client.timeout.connect is not None and client.timeout.connect <= 15
+
+
+def test_t1365_every_outbound_client_goes_through_the_outbound_policy():
+    for path in py_files():
+        if path.name == "outbound.py":
+            continue
+        assert "httpx.AsyncClient(" not in path.read_text(encoding="utf-8"), path.name
+
+
+# --------------------------------------------------------------------------- T38 bind variables (migrations)
+def test_t38_dynamic_sql_in_migrations_uses_format_identifiers_or_literals():
+    for path in sorted((REPO / "supabase" / "migrations").glob("*.sql")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip().lower()
+            if not stripped.startswith("execute ") or stripped.startswith("execute function"):
+                continue
+            rest = stripped[len("execute "):]
+            assert rest.startswith("format(") or (rest.startswith("'") and "||" not in rest), f"{path.name}:{lineno}"
+            if rest.startswith("format("):
+                assert "%s" not in rest or "quote_ident" in rest, f"{path.name}:{lineno} uses %s without quoting"
+
+
+@pytest.mark.parametrize("q", ["' or 1=1 --", "name; drop table patients"])
+def test_t38_search_payloads_are_bound_not_concatenated(client, identities, fake_db, q):
+    r = client.get("/v1/patients", params={"q": q}, headers=auth(identities, "nurse"))
+    assert r.status_code in (200, 422)
+    assert not any(leak in r.text.lower() for leak in LEAKS)
+    for _, sql, _params in fake_db.calls:
+        assert q not in sql and "drop table" not in sql.lower()
+
+
+# --------------------------------------------------------------------------- T42 untrusted selectors
+@pytest.mark.parametrize("method,path,role,body,params", [
+    ("post", "/v1/simulation/scenario", "admin", {"scenario": "__class__"}, None),
+    ("post", "/v1/simulation/scenario", "admin", {"scenario": "reset_simulation_data"}, None),
+    ("post", "/v1/simulation/advance", "admin", {"steps": 100000, "expected_version": 1}, None),
+    ("get", "/v1/reports/export.csv", "admin", None, {"kind": "../../etc/passwd"}),
+    ("get", "/v1/reports/export.csv", "admin", None, {"kind": "__init__"}),
+    ("get", "/v1/reports/ward-activity", "admin", None, {"hours": 24 * 31 + 1}),
+    ("get", "/v1/reports/audit", "admin", None, {"hours": 100000}),
+])
+def test_t42_server_side_selectors_and_bounds_come_from_allow_lists(client, identities, fake_db, method, path, role, body,
+                                                                    params):
+    kwargs = {"headers": auth(identities, role)}
+    if body is not None:
+        kwargs["json"] = body
+    if params is not None:
+        kwargs["params"] = params
+    r = getattr(client, method)(path, **kwargs)
+    assert r.status_code in (400, 422), r.text
+    assert fake_db.calls == []
+
+
+def test_t42_no_dynamic_dispatch_on_request_data():
+    for path in py_files(APP_DIR / "routers") + py_files(APP_DIR / "services"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("getattr", "setattr"):
+                target = ast.unparse(node.args[0]) if node.args else ""
+                # only fixed attributes of os / settings / request.state are looked up dynamically
+                assert target in ("os", "get_settings()", "request.state"), f"{path.name}:{node.lineno} {target}"
+            assert not (isinstance(node, ast.Attribute) and node.attr in ("import_module", "__import__")), path.name

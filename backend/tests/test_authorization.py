@@ -579,3 +579,106 @@ def test_break_glass_scope_excludes_administrative_functions():
                                                 Perm.DEVICE_WRITE, Perm.SETTINGS_MANAGE}
     assert break_glass.GRANT_DURATION.total_seconds() == 30 * 60
     assert security.STEP_UP_MAX_AGE.total_seconds() == 300
+
+
+# ---------------------------------------------------------------------------
+# Object-level authorization on every request (T378) and indirect file references (T50)
+# ---------------------------------------------------------------------------
+def test_t378_other_ward_alarm_and_attachment_are_404_like_missing(client, identities, monkeypatch):
+    from app.routers import alarms, files
+
+    alarm_calls = _fake_db(monkeypatch, alarms, {})  # RLS (can_access_patient) hides ward B's alarm: zero rows
+    file_calls = _fake_db(monkeypatch, files, {})    # ... and ward B's attachment
+    uid = add_identity(identities, "nurse")
+    h = _auth(_fresh_token(uid, role="nurse"))
+    r = client.post(f"/v1/alarms/{uuid.uuid4()}/acknowledge", headers=h, json={"acknowledged": True})
+    assert r.status_code == 404 and r.json()["error"] == "Alarm not found."
+    r = client.get(f"/v1/files/{uuid.uuid4()}/url", headers=h)
+    assert r.status_code == 404 and r.json()["error"] == "File not found."
+    # every lookup is keyed by the opaque id only; scoping is left to RLS under the caller's identity
+    assert all("ward" not in sql.lower() for sql, _ in alarm_calls + file_calls)
+
+
+@pytest.mark.parametrize("field", ["acknowledged_by", "user_id", "actor_id", "patient_id", "ward_id"])
+def test_t378_client_supplied_owner_fields_are_rejected(client, identities, field):
+    uid = add_identity(identities, "nurse")
+    h = _auth(_fresh_token(uid, role="nurse"))
+    r = client.post(f"/v1/alarms/{uuid.uuid4()}/acknowledge", headers=h, json={"acknowledged": True, field: str(uuid.uuid4())})
+    assert r.status_code == 422
+
+
+def test_t378_rls_scopes_reads_and_writes_of_clinical_objects():
+    sql = "\n".join(p.read_text(encoding="utf-8") for p in sorted((APP_DIR.parents[1] / "supabase" / "migrations").glob("*.sql")))
+
+    def last_policy(name: str) -> str:
+        found = [s for s in sql.split(";") if f"create policy {name} " in s]
+        assert found, name
+        return found[-1]
+
+    for name in ("patients_read", "alarms_read", "attachments_read", "observations_read"):
+        assert "can_access_patient(" in last_policy(name), name
+    update = last_policy("alarms_update")
+    assert "can_access_patient(patient_id)" in update and "current_staff_role() is not null" not in update
+
+
+def test_t50_object_paths_are_server_generated_uuids():
+    from app.services import files as fs
+
+    for bad in ("patients/../secrets", "patients/x/../../secrets.png", f"patients/{uuid.uuid4()}/report.pdf",
+                "secrets", f"../{uuid.uuid4()}.png"):
+        with pytest.raises(fs.FileRejected):
+            fs.safe_object_path(bad)
+    good = f"patients/{uuid.uuid4()}/{uuid.uuid4()}.png"
+    assert fs.safe_object_path(good) == good
+    for _, path, route in _routes():
+        names = {p.name for p in route.dependant.path_params + route.dependant.query_params}
+        assert not names & {"path", "file", "filename", "storage_path", "object_path"}, path
+
+
+# ---------------------------------------------------------------------------
+# Server-side authorization is the documented one (T17) and covers every role (T338)
+# ---------------------------------------------------------------------------
+def test_t17_documented_permission_table_matches_enforced_matrix():
+    doc = (APP_DIR.parents[1] / "docs" / "security" / "authorization.md").read_text(encoding="utf-8")
+    table = doc.split("| Permission | Nurse | Physician | Biomed tech | Admin |", 1)[1].split("\n\n", 1)[0]
+    columns = [Role.NURSE, Role.PHYSICIAN, Role.BIOMED_TECH, Role.ADMIN]
+    documented: dict[Role, set[str]] = {r: set() for r in columns}
+    for line in table.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 5 or not cells[0].startswith("`"):
+            continue
+        for role, cell in zip(columns, cells[1:5]):
+            if cell == "yes":
+                documented[role].add(cells[0].strip("`"))
+    assert documented == {r: {p.value for p in PERMISSIONS[r]} for r in columns}
+
+
+def test_t17_forged_role_in_body_or_token_metadata_does_not_unlock_admin_routes(client, identities):
+    uid = add_identity(identities, "nurse")
+    token = make_token(uid, aal="aal2", auth_time=int(time.time()), app_metadata={"role": "admin"},
+                       user_metadata={"role": "admin", "permissions": ["simulation:control"]})
+    h = {**_auth(token), "X-Role": "admin"}
+    forged = {"role": "admin", "permissions": ["settings:manage"], "acknowledged": True, "confirm_text": "RESET DEMO DATA"}
+    assert client.post("/v1/simulation/reset", headers=h, json=forged).status_code == 403
+    assert client.patch("/v1/settings/security", headers=h, json={"password_min_length": 12}).status_code == 403
+    assert client.post("/v1/staff", headers=h, json={"email": "x@acme.test", "full_name": "X Y", "role": "admin"}).status_code == 403
+
+
+def test_t338_unknown_role_gets_nothing(client, identities):
+    uid = add_identity(identities, "nurse")
+    identities[uid]["role"] = "auditor"  # a role absent from the permission table
+    h = _auth(_fresh_token(uid, role="auditor"))
+    for method, path in (("GET", "/v1/patients"), ("GET", "/v1/alarms"), ("GET", "/v1/monitors"), ("GET", "/v1/staff")):
+        assert client.request(method, _url(path), headers=h).status_code in (401, 403), path
+
+
+@pytest.mark.parametrize("method,path,body", [
+    ("PATCH", "/v1/settings/security", {"password_min_length": 14}),
+    ("POST", "/v1/simulation/reset", {"confirm_text": "RESET DEMO DATA", "acknowledged": True}),
+])
+def test_t338_stale_admin_login_needs_step_up_on_sensitive_admin_actions(client, identities, method, path, body):
+    uid = add_identity(identities, "admin")
+    stale = _fresh_token(uid, role="admin", auth_age_s=int(security.STEP_UP_MAX_AGE.total_seconds()) + 60)
+    r = client.request(method, path, headers=_auth(stale), json=body)
+    assert r.status_code == 401
+    assert "step_up_required" in r.headers.get("WWW-Authenticate", "")

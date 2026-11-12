@@ -57,4 +57,4 @@ SECURITY_HEADERS = {
 - [ ] Pytest (`backend/tests/test_api_security.py`): every response, including 404/405/429 errors, carries both headers.
 - [ ] Manual: embedding the frontend in an `<iframe>` from another origin is refused by the browser.
 
-**Status:** Pending
+**Status:** Applied

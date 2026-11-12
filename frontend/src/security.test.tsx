@@ -9,6 +9,8 @@ import tsconfigAppRaw from "../tsconfig.app.json?raw";
 import packageRaw from "../package.json?raw";
 import { ExternalLink, openSafely, safeExternalUrl } from "./components/ExternalLink";
 import { SearchFilterBar } from "./components/SearchFilterBar";
+import { ErrorMessage } from "./components/ErrorMessage";
+import { ApiError } from "./services/api";
 
 interface HeaderRule {
   source: string;
@@ -174,6 +176,45 @@ describe("index.html, encoding and strict mode (T44, T132, T325, T329)", () => {
   it("no classic (non-module) scripts or eval-like code in src", () => {
     expect(sourcesMatching(/\beval\s*\(|new\s+Function\s*\(|setTimeout\(\s*["'`]/)).toEqual([]);
     expect(sourcesMatching(/dangerouslySetInnerHTML|\.innerHTML\s*=|outerHTML\s*=|document\.write\(/)).toEqual([]);
+  });
+});
+
+describe("authenticated layouts (T338)", () => {
+  const app = SOURCES["App.tsx"] ?? "";
+
+  it("every non-public route renders inside Protected, whose Shell offers sign-out controls", () => {
+    const routes = [...app.matchAll(/<Route\s+path="([^"]+)"\s+element=\{([\s\S]*?)\}\s*\/>/g)];
+    expect(routes.length).toBeGreaterThan(10);
+    const PUBLIC = new Set(["/login", "/signed-out", "/privacy", "/forgot-password", "/reset-password", "/", "*"]);
+    for (const [, path, element] of routes) {
+      if (PUBLIC.has(path!)) continue;
+      expect(element, path).toMatch(/^\s*<Protected[\s>]/);
+    }
+    const shell = app.slice(app.indexOf("function Shell("), app.indexOf("function Protected("));
+    expect(shell).toMatch(/onClick=\{\(\) => void signOut\(\)\}[\s\S]*Sign out/);
+    expect(shell).toMatch(/signOut\("global"\)/);
+    expect(app.slice(app.indexOf("function Protected("), app.indexOf("function Public("))).toMatch(/<Shell>/);
+  });
+});
+
+describe("untrusted data is rendered as text, never markup (T36)", () => {
+  const PAYLOAD = "<img src=x onerror=alert(1)>";
+
+  it("API error messages and field details render the payload literally", () => {
+    const { container } = render(<ErrorMessage error={new ApiError(422, PAYLOAD, [{ field: PAYLOAD, message: PAYLOAD }], PAYLOAD)} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain(PAYLOAD);
+  });
+
+  it("links built from data cannot carry javascript: URLs", () => {
+    const { container } = render(<ExternalLink href="javascript:alert(1)">{PAYLOAD}</ExternalLink>);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
+  });
+
+  it("observations, names and alarm labels are JSX text children, never HTML or inline style strings", () => {
+    expect(SOURCES["screens/PatientDetail.tsx"]).toMatch(/\{o\.body\}/);
+    expect(sourcesMatching(/insertAdjacentHTML|createContextualFragment|setAttribute\(\s*["']on|style=\{\s*`|url\(\$\{/)).toEqual([]);
   });
 });
 

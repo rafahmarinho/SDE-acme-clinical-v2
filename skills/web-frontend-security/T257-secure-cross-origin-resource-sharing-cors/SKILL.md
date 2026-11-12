@@ -58,4 +58,4 @@ app.add_middleware(
 - [ ] `Settings` refuses `*` or regex-like values for `CORS_ORIGINS`.
 - [ ] No response includes `Access-Control-Allow-Credentials: true` together with a wildcard.
 
-**Status:** Pending
+**Status:** Applied

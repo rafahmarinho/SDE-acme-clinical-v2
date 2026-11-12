@@ -53,4 +53,4 @@ create policy alarms_realtime on public.alarms for select to authenticated
 - [ ] Policy tests per role: biomedical technician claims cannot select `observations`; nurse claims cannot select `staff_profiles.email`; `anon` selects nothing.
 - [ ] The access matrix document matches grants (`information_schema.role_table_grants` / `column_privileges` snapshot test).
 
-**Status:** Pending
+**Status:** Applied

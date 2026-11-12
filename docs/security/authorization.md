@@ -24,6 +24,7 @@ enforcement point.
 | `threshold:write` | | yes | | | ward/patient alarm limits (own wards only) |
 | `device:read` | yes | yes | yes | yes | monitors list |
 | `device:write` | | | yes | yes | bind/unbind monitors |
+| `maintenance:read` | | | yes | yes | maintenance history |
 | `maintenance:write` | | | yes | | maintenance records |
 | `report:read` | | yes | | yes | ward activity report |
 | `file:write` | yes | yes | | | upload attachments |
@@ -74,6 +75,7 @@ records `authz.step_up_required`, and the SPA asks for the password again and re
 |---|---|
 | Staff invitation, role/activation change (`/v1/staff`) | 5 minutes |
 | Simulation reset (`POST /v1/simulation/reset`) | 5 minutes |
+| Security settings change (`PATCH /v1/settings/security`) | 5 minutes |
 | Alarm-limit changes (`PUT /v1/thresholds/...`) | 5 minutes |
 | Break-glass activation (`POST /v1/break-glass`) | 15 minutes |
 

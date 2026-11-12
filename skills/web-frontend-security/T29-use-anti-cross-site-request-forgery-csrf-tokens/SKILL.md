@@ -57,4 +57,10 @@ await fetch(`${API_BASE}/alarms/${id}/ack`, { method: "POST", credentials: "omit
 - [ ] Any cookie set by the API has `SameSite=Strict`, `Secure`, `HttpOnly`.
 - [ ] `frontend/src/services/api.test.ts` asserts requests use `credentials: "omit"` and the bearer header.
 
-**Status:** Pending
+**Status:** Applied
+
+**Decision:** no synchronizer/double-submit token. The API authenticates only with the Supabase access token in
+the `Authorization` header (never cookies), which is a per-session unpredictable secret the browser does not
+attach automatically, so it fulfils the anti-CSRF-token role. Layered with JSON-only bodies (415), an Origin
+allow-list on state-changing requests (403) and strict CORS. Re-open if cookie authentication is ever added.
+See `docs/security/web-frontend.md` ("Decision: CSRF defence").

@@ -10,6 +10,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import psycopg
 import pytest
@@ -276,6 +277,7 @@ def test_t342_scenario_and_reset_responses_carry_warnings(client, identities, mo
         return None
 
     monkeypatch.setattr(sim_router, "transaction", fake_transaction(FakeConn()))
+    monkeypatch.setattr(sim_router, "fetch_one", AsyncMock(return_value={"retry_after": 0}))  # shared limit (T1362)
     monkeypatch.setattr(sim_router.simulation, "set_scenario", fake_set)
     monkeypatch.setattr(sim_router.simulation, "reset", fake_set)
     monkeypatch.setattr(sim_router, "_state", fake_state)

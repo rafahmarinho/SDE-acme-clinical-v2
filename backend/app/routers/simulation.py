@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import Field
 
 from app.core.audit import record_event
+from app.core.ratelimit import enforce_shared_limit
 from app.core.security import CurrentPrincipal, Perm, Principal, require, require_recent_auth
 from app.db import fetch_one, transaction
 from app.schemas import Out, SimulationAdvanceIn, SimulationOut, SimulationResetIn, SimulationScenarioIn
@@ -64,6 +65,7 @@ async def get_state(principal: CurrentPrincipal) -> SimulationOut:
 @router.post("/scenario", response_model=SimulationActionOut)
 async def set_scenario(body: ScenarioChangeIn, request: Request, principal: Operator) -> SimulationActionOut:
     async with transaction(principal) as conn:
+        await enforce_shared_limit(conn, "simulation", fetch_one)
         await simulation.set_scenario(conn, str(principal.user_id), body.scenario.value, [str(m) for m in body.monitor_ids])
         await record_event(principal, "simulation.scenario_set", "simulation", "1",
                            details={"scenario": body.scenario.value, "monitors": len(body.monitor_ids), "acknowledged": True},
@@ -75,6 +77,7 @@ async def set_scenario(body: ScenarioChangeIn, request: Request, principal: Oper
 async def advance(body: SimulationAdvanceIn, request: Request, principal: Operator) -> AdvanceOut:
     async def run() -> dict:
         async with transaction(principal) as conn:
+            await enforce_shared_limit(conn, "simulation", fetch_one)
             result = await simulation.advance(conn, str(principal.user_id), body.steps, body.expected_version)
             lost = await alarms.watchdog_sweep(conn)
             result["watchdog_connection_lost"] = len(lost)
@@ -87,8 +90,8 @@ async def advance(body: SimulationAdvanceIn, request: Request, principal: Operat
 
 @router.post("/reset", response_model=SimulationActionOut)
 async def reset(body: SimulationResetConfirmedIn, request: Request, principal: ResetOperator) -> SimulationActionOut:
-
     async with transaction(principal) as conn:
+        await enforce_shared_limit(conn, "simulation-reset", fetch_one)
         await simulation.reset(conn, str(principal.user_id))
         await record_event(principal, "simulation.reset", "simulation", "1", details={"acknowledged": True}, conn=conn,
                            request_id=request.state.request_id)

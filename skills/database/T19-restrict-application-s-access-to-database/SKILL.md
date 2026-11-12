@@ -52,4 +52,4 @@ alter default privileges in schema public revoke all on tables from public;
 - [ ] `select rolsuper, rolbypassrls from pg_roles where rolname = current_user` is false/false at backend startup.
 - [ ] Supabase advisors report no tables exposed to `anon`.
 
-**Status:** Pending
+**Status:** Applied

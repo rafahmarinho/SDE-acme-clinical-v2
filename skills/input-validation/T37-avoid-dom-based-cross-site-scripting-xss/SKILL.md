@@ -51,4 +51,4 @@ const [q, setQ] = useState(() => new URLSearchParams(location.search).get("q")?.
 - [ ] Vitest (`frontend/src/screens/auth.test.tsx`): `/reset-password#error_description=<img src=x onerror=alert(1)>` renders no injected element.
 - [ ] No DOM HTML sinks in `frontend/src` (lint rule enforced in CI).
 
-**Status:** Pending
+**Status:** Applied

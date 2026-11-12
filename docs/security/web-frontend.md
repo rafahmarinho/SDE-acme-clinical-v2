@@ -98,13 +98,26 @@ Further layers:
   simulation advance, `confirm` + bed availability on monitor binding, `PASSWORD_RECOVERY` session
   for password reset) (T67, T142).
 * CSP `form-action 'self'` and `frame-ancestors 'none'` on the SPA.
+* Origin check: a POST/PUT/PATCH/DELETE carrying an `Origin` header that is not one of the configured SPA
+  origins (including `Origin: null`) is refused with 403 before routing (`SecurityHeadersMiddleware`);
+  non-browser clients send no `Origin` and still need the bearer token.
 
-Synchronizer/double-submit tokens are therefore not used. **Re-open this decision** if cookie-based
+Synchronizer/double-submit tokens are therefore not used (T29 decision): the Supabase access token sent in the
+`Authorization` header already is a per-session, unpredictable secret that the browser never attaches
+automatically, which is exactly the property an anti-CSRF token provides. **Re-open this decision** if cookie-based
 authentication, HTML form posts to the API or `allow_credentials=True` are ever introduced.
 
 Manual check: from another origin, auto-submit `<form method="POST" action="https://<api>/v1/simulation/reset">`
 while logged in; the simulation must not reset (verify in the Events screen). Replaying a captured
 request without the `Authorization` header must return 401.
+
+## Decision: JSON hijacking (T166, T167)
+
+Every API collection is returned inside the `Page` object envelope (`{"items": [...], "next_offset": ...}`);
+no route returns a top-level JSON array (enforced by `backend/tests/test_api_security.py`). Responses are
+`application/json` with `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`, and the API authenticates
+only with the `Authorization` header, so a cross-site `<script src>` request carries no credentials and gets
+401. Unpredictable URLs or `while(1);` prefixes are therefore unnecessary.
 
 ## Forms and client storage (T63, T111, T296, T219)
 

@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.core.audit import record_event
 from app.core.config import get_settings
 from app.core.errors import DomainError
-from app.core.security import Perm, Principal, require
+from app.core.security import Perm, Principal, require, require_recent_auth
 from app.db import fetch_all, fetch_one, transaction
 from app.schemas import SecuritySettingsOut, SecuritySettingsUpdate, Strict
 from app.services import privacy
@@ -31,8 +31,14 @@ log = logging.getLogger("acme.settings")
 
 _COLUMNS = ("password_min_length", "session_idle_minutes", "session_absolute_hours", "max_concurrent_sessions",
             "lockout_threshold", "lockout_minutes", "require_mfa_for_admin", "data_retention_days")
+# Explicit column list (never select *): only the policy values plus change metadata leave the database (T2139).
+_SETTINGS_SELECT = ("select password_min_length, session_idle_minutes, session_absolute_hours, max_concurrent_sessions, "
+                    "lockout_threshold, lockout_minutes, require_mfa_for_admin, data_retention_days, updated_by, "
+                    "updated_at from public.security_settings where id = 1")
 
 SettingsAdmin = Annotated[Principal, Depends(require(Perm.SETTINGS_MANAGE))]
+# Changing the security policy is a highly sensitive transaction: recent re-authentication required (T338, T9).
+SteppedUpSettingsAdmin = Annotated[Principal, Depends(require_recent_auth(Perm.SETTINGS_MANAGE))]
 StaffAdmin = Annotated[Principal, Depends(require(Perm.STAFF_MANAGE))]
 
 
@@ -118,23 +124,23 @@ class ErasureDecisionOut(BaseModel):
 @router.get("/security", response_model=SecuritySettingsOut)
 async def get_security_settings(principal: SettingsAdmin) -> SecuritySettingsOut:
     async with transaction(principal) as conn:
-        row = await fetch_one(conn, "select * from public.security_settings where id = 1")
+        row = await fetch_one(conn, _SETTINGS_SELECT)
     return SecuritySettingsOut(**row)
 
 
 @router.patch("/security", response_model=SecuritySettingsOut)
 async def update_security_settings(body: SecuritySettingsUpdate, request: Request,
-                                   principal: SettingsAdmin) -> SecuritySettingsOut:
+                                   principal: SteppedUpSettingsAdmin) -> SecuritySettingsOut:
     changes = {k: v for k, v in body.model_dump(exclude_none=True).items() if k in _COLUMNS}
     async with transaction(principal) as conn:
-        before = await fetch_one(conn, "select * from public.security_settings where id = 1 for update")
+        before = await fetch_one(conn, _SETTINGS_SELECT + " for update")
         for column, value in changes.items():  # column names come from the fixed allow-list above
             await conn.execute(f"update public.security_settings set {column} = %s, updated_by = %s where id = 1",
                                (value, str(principal.user_id)))
         await record_event(principal, "settings.security_changed", "security_settings", "1",
                            details={k: [before[k], v] for k, v in changes.items()}, conn=conn,
                            request_id=request.state.request_id)
-        row = await fetch_one(conn, "select * from public.security_settings where id = 1")
+        row = await fetch_one(conn, _SETTINGS_SELECT)
     return SecuritySettingsOut(**row)
 
 
@@ -142,7 +148,7 @@ async def update_security_settings(body: SecuritySettingsUpdate, request: Reques
 async def security_report(request: Request, principal: SettingsAdmin) -> SecurityReport:
     """Effective configuration, approved baseline and drift (out-of-band changes are detected here)."""
     async with transaction(principal) as conn:
-        row = await fetch_one(conn, "select * from public.security_settings where id = 1")
+        row = await fetch_one(conn, _SETTINGS_SELECT)
         approved = await fetch_one(conn, """select fingerprint, approved_at from public.security_settings_approvals
                order by id desc limit 1""")
         await record_event(principal, "settings.report_viewed", "security_settings", "1", conn=conn,
@@ -161,7 +167,7 @@ async def security_report(request: Request, principal: SettingsAdmin) -> Securit
 async def approve_configuration(request: Request, principal: SettingsAdmin) -> ApprovalOut:
     """Record the current settings as the approved baseline (four-eyes review happens in the change PR/ticket)."""
     async with transaction(principal) as conn:
-        row = await fetch_one(conn, "select * from public.security_settings where id = 1 for share")
+        row = await fetch_one(conn, _SETTINGS_SELECT + " for share")
         fingerprint = privacy.config_fingerprint(row)
         saved = await fetch_one(conn, """insert into public.security_settings_approvals (fingerprint, approved_by)
                values (%s, %s) returning fingerprint, approved_at""", (fingerprint, str(principal.user_id)))

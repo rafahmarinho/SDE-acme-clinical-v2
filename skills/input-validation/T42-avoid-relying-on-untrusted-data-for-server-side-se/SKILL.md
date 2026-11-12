@@ -59,4 +59,4 @@ async def choose(body: ScenarioIn, principal=Depends(require(Perm.simulation_con
 - [ ] Pytest: `POST /simulation/scenario {"scenario":"__class__"}` -> 422; `POST /simulation/advance {"steps": 100000}` -> 422; report kind `../../etc/passwd` -> 400/422.
 - [ ] Report date range above the documented maximum is rejected.
 
-**Status:** Pending
+**Status:** Applied

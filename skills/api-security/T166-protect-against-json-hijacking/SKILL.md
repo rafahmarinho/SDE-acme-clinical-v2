@@ -57,4 +57,4 @@ const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Beare
 - [ ] Every JSON response has `Content-Type: application/json` and `X-Content-Type-Options: nosniff`.
 - [ ] A request carrying only cookies (no `Authorization`) to a data endpoint returns 401.
 
-**Status:** Pending
+**Status:** Applied

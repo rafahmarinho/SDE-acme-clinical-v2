@@ -29,6 +29,8 @@ BEARER = re.compile(r"(?i)bearer\s+[a-z0-9._~+/=-]+")
 JWT_LIKE = re.compile(r"eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}")
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 KEY_VALUE = re.compile(r"(?i)\b(password|passwd|token|secret|api[_-]?key)\b(\"?\s*[:=]\s*\"?)[^\s\",}&]+")
+# Credentials inside connection strings / URLs (scheme://user:password@host), T2599.
+URL_CREDENTIALS = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s:/@]*:)[^\s@]+@")
 MAX_ENTRY_CHARS = 2000
 MAX_FIELD_CHARS = 200
 
@@ -36,6 +38,7 @@ _STANDARD = set(vars(logging.LogRecord("", 0, "", 0, "", (), None))) | {"message
 
 
 def _redact_str(value: str) -> str:
+    value = URL_CREDENTIALS.sub(r"\1[REDACTED]@", value)
     value = BEARER.sub("Bearer [REDACTED]", value)
     value = JWT_LIKE.sub("[REDACTED_JWT]", value)
     value = KEY_VALUE.sub(r"\1\2[REDACTED]", value)

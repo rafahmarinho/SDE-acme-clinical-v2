@@ -35,6 +35,7 @@ import starlette
 from psycopg import AsyncConnection
 
 from app.core.config import Settings, get_settings
+from app.core.outbound import supabase_client
 from app.db import fetch_all
 
 log = logging.getLogger("acme.privacy")
@@ -159,7 +160,7 @@ def _admin_headers() -> dict[str, str]:
 
 
 def _supabase_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(base_url=str(get_settings().supabase_url).rstrip("/"), timeout=10, verify=True)
+    return supabase_client(10)
 
 
 async def verify_password(email: str, password: str) -> bool:

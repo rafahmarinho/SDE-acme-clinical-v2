@@ -21,6 +21,27 @@ from app.core.config import get_settings
 
 _pool: AsyncConnectionPool | None = None
 
+_ROLE_CHECK_SQL = "select rolsuper, rolbypassrls from pg_roles where rolname = current_user"
+
+
+class PrivilegedDatabaseRole(RuntimeError):
+    """The API connected with a role that bypasses RLS: refuse to use the connection (T19)."""
+
+
+async def verify_least_privilege(conn: AsyncConnection) -> None:
+    """Pool ``configure`` hook: every new connection must belong to a NOSUPERUSER, NOBYPASSRLS role.
+
+    A superuser or BYPASSRLS login would silently disable every row-level-security policy, so the
+    connection is rejected (the pool discards it) instead of serving requests with full access.
+    """
+    async with conn.cursor() as cur:
+        await cur.execute(_ROLE_CHECK_SQL)
+        row = await cur.fetchone()
+    flags = (row.get("rolsuper"), row.get("rolbypassrls")) if isinstance(row, dict) else tuple(row or (True, True))
+    await conn.commit()  # leave the new connection idle (configure must not leave a transaction open)
+    if row is None or any(flags):
+        raise PrivilegedDatabaseRole("DATABASE_URL role is a superuser or bypasses RLS; use the acme_api role")
+
 
 def _get_pool() -> AsyncConnectionPool:
     global _pool
@@ -33,6 +54,7 @@ def _get_pool() -> AsyncConnectionPool:
             timeout=5,
             max_idle=60,
             open=False,
+            configure=verify_least_privilege,
             kwargs={"row_factory": dict_row, "connect_timeout": 5, "application_name": "acme-clinical-api"},
         )
     return _pool

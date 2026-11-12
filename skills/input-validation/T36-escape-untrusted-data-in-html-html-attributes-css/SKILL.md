@@ -56,4 +56,4 @@ def csv_safe(value) -> str:
 - [ ] Vitest in `frontend/src/security.test.tsx`: an observation `<img src=x onerror=alert(1)>` renders as literal text and creates no `img` element.
 - [ ] Pytest: CSV export of a value `=HYPERLINK(...)` is prefixed with `'`.
 
-**Status:** Pending
+**Status:** Applied

@@ -200,3 +200,87 @@ def test_runtime_database_user_is_least_privilege_api_role():
 def test_migrations_contain_no_passwords(path):
     text = _read(ROOT / "supabase" / "migrations" / path)
     assert not re.search(r"\bpassword\s+'", text)
+
+
+# --------------------------------------------------------------------------- T19 runtime role check
+class _RoleCursor:
+    def __init__(self, row):
+        self.row = row
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def execute(self, sql, params=None):
+        assert "rolsuper" in sql and "rolbypassrls" in sql and "current_user" in sql
+
+    async def fetchone(self):
+        return self.row
+
+
+class _RoleConn:
+    def __init__(self, row):
+        self.row, self.committed = row, False
+
+    def cursor(self):
+        return _RoleCursor(self.row)
+
+    async def commit(self):
+        self.committed = True
+
+
+@pytest.mark.parametrize("row,ok", [({"rolsuper": False, "rolbypassrls": False}, True),
+                                    ({"rolsuper": True, "rolbypassrls": False}, False),
+                                    ({"rolsuper": False, "rolbypassrls": True}, False), (None, False)])
+def test_t19_pool_rejects_superuser_or_bypassrls_connections(row, ok):
+    import asyncio
+
+    from app import db
+
+    conn = _RoleConn(row)
+    if ok:
+        asyncio.run(db.verify_least_privilege(conn))
+        assert conn.committed
+    else:
+        with pytest.raises(db.PrivilegedDatabaseRole):
+            asyncio.run(db.verify_least_privilege(conn))
+
+
+def test_t19_pool_runs_the_role_check_on_every_new_connection(monkeypatch):
+    from app import db
+
+    monkeypatch.setattr(db, "_pool", None)
+    pool = db._get_pool()
+    try:
+        assert pool._configure is db.verify_least_privilege
+    finally:
+        monkeypatch.setattr(db, "_pool", None)
+
+
+def test_t19_t2598_live_access_control_suite_runs_in_ci_as_the_api_role():
+    suite = (ROOT / "supabase" / "tests" / "access_control.sql").read_text(encoding="utf-8").lower()
+    for stmt in ("delete from public.events", "update public.observations", "select count(*) from auth.users",
+                 "drop table public.patients", "create table public.ci_probe", "disable row level security"):
+        assert stmt in suite, stmt
+    assert "exception when insufficient_privilege" in suite and "not c.relrowsecurity" in suite
+    assert "current_user <> 'acme_api'" in suite
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "-f supabase/tests/access_control.sql" in ci and "postgresql://acme_api:" in ci
+
+
+# --------------------------------------------------------------------------- T2598 query-level access control
+def _final_policy(name: str) -> str:
+    found = [s for s in ALL_SQL.split(";") if f"create policy {name} " in s]
+    assert found, name
+    return re.sub(r"\s+", " ", found[-1])
+
+
+def test_t2598_role_scoped_policies():
+    observations = _final_policy("observations_read")
+    assert "can_access_patient(" in observations and "biomed_tech" not in observations  # biomed sees no observations
+    staff = _final_policy("staff_read")
+    assert "user_id = public.current_staff_id()" in staff  # non-admins read only their own profile (incl. e-mail)
+    assert "for select to acme_api" in staff
+    assert not [g for g in _grants() if re.search(r"\bto (anon|public)\b", g) and " on public." in g]

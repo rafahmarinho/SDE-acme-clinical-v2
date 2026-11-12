@@ -65,7 +65,7 @@ jobs:
           VITE_API_BASE_URL: https://api.example.test
       - name: Bundle has no server secrets or third-party scripts
         run: |
-          if grep -rEi "service_role|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_JWT_SECRET|DATABASE_URL" dist; then exit 1; fi
+          if grep -rEi "service_role|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_JWT_SECRET|DATABASE_URL|AUDIT_SIGNING_KEY|CONFIG_INTEGRITY_KEY|BEGIN [A-Z ]*PRIVATE KEY" dist; then exit 1; fi
           if grep -Eo '<script[^>]+src="https?://' dist/index.html; then exit 1; fi
       - name: Dependency audit
         run: pnpm audit --audit-level=moderate
@@ -115,6 +115,13 @@ jobs:
           test "$(psql "$DB" -tAc 'select count(*) from public.monitors')" = "10"
           test "$(psql "$DB" -tAc "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and not c.relrowsecurity")" = "0"
           psql "$DB" -v ON_ERROR_STOP=1 -c "select public.run_retention_purge('manual')"
+      - name: Access-control checks as the API role (T19, T2598)
+        run: |
+          DB=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          # Disposable stack only: a throwaway password so the suite can log in as acme_api itself.
+          CI_PW="ci-$(openssl rand -hex 16)"
+          psql "$DB" -v ON_ERROR_STOP=1 -c "alter role acme_api with password '${CI_PW}'"
+          psql "postgresql://acme_api:${CI_PW}@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/access_control.sql
 
   deploy:
     if: github.event_name == 'workflow_dispatch' && inputs.deploy

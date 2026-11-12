@@ -12,6 +12,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import psycopg
 import pytest
@@ -436,6 +437,7 @@ def test_t432_alarm_generation_continues_when_audit_insert_fails(client, identit
         return []
 
     monkeypatch.setattr(sim_router, "transaction", fake_transaction(conn))
+    monkeypatch.setattr(sim_router, "fetch_one", AsyncMock(return_value={"retry_after": 0}))  # shared limit (T1362)
     monkeypatch.setattr(sim_router.simulation, "advance", fake_advance)
     monkeypatch.setattr(sim_router.alarms, "watchdog_sweep", fake_watchdog)
     r = client.post("/v1/simulation/advance", json={"steps": 1, "expected_version": 0}, headers=_admin_headers(identities))
@@ -543,6 +545,7 @@ def test_t438_audit_report_endpoint_is_on_demand_and_audited(client, identities,
         audited.append(action)
 
     monkeypatch.setattr(rep_router, "transaction", fake_transaction(FakeConn()))
+    monkeypatch.setattr(rep_router, "fetch_one", AsyncMock(return_value={"retry_after": 0}))  # shared limit (T1362)
     monkeypatch.setattr(rep_router.reports, "audit_summary", fake_summary)
     monkeypatch.setattr(rep_router, "record_event", fake_record)
     r = client.get("/v1/reports/audit", params={"actions": "alarm.acknowledged"}, headers=_admin_headers(identities))
@@ -637,3 +640,12 @@ def test_t105_no_debugger_calls_or_reload_in_deploy():
         src = path.read_text(encoding="utf-8")
         assert not re.search(r"\b(breakpoint\(\)|pdb\.set_trace|import pdb)", src), path
     assert "--reload" not in (BACKEND / "vercel.json").read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- T2599 DSN never logged
+def test_t2599_connection_strings_in_log_lines_are_redacted():
+    for dsn in ("postgresql://acme_api:Sup3r!Secret#x@localhost:5432/postgres?sslmode=verify-full",
+                "postgres://acme_api:p%40ss-W0rd@db.example.supabase.co/postgres"):
+        out = app_logging.redact(f"pool error connecting with {dsn}")
+        assert "Sup3r" not in out and "p%40ss" not in out, out
+        assert "[REDACTED]@" in out

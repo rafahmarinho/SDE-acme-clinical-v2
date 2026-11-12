@@ -22,6 +22,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 
 from app.core.audit import notify_admins, record_event
 from app.core.config import get_settings
+from app.core.outbound import supabase_client
+from app.core.ratelimit import enforce_shared_limit
 from app.core.errors import DomainError
 from app.core.logging import sec_event
 from app.core.security import Perm, Principal, require
@@ -43,7 +45,7 @@ def _storage_headers() -> dict[str, str]:
 
 
 def _storage_client(timeout: float) -> httpx.AsyncClient:
-    return httpx.AsyncClient(base_url=str(get_settings().supabase_url).rstrip("/"), timeout=timeout, verify=True)
+    return supabase_client(timeout)
 
 
 @router.get("/patients/{patient_id}", response_model=Page[AttachmentOut])
@@ -85,6 +87,7 @@ async def upload_file(patient_id: UUID, request: Request, principal: Annotated[P
         await _reject(principal, request, patient_id, exc)
         raise
     async with transaction(principal) as conn:
+        await enforce_shared_limit(conn, "files-upload", fetch_one)
         if await fetch_one(conn, "select 1 from public.patients where id = %s", (str(patient_id),)) is None:
             raise HTTPException(404, "Patient not found.")
         object_path = file_service.new_object_path(patient_id, ext)

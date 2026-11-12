@@ -6,12 +6,14 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import stat
 import struct
 import sys
 import time
 import uuid
 import zlib
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -264,6 +266,7 @@ def test_t300_many_exports_leave_no_temp_files(client, identities, monkeypatch, 
         return None
 
     monkeypatch.setattr(rep_router, "transaction", fake_transaction(FakeConn()))
+    monkeypatch.setattr(rep_router, "fetch_one", AsyncMock(return_value={"retry_after": 0}))  # shared limit (T1362)
     monkeypatch.setattr(rep_router.reports, "ward_activity", fake_ward)
     monkeypatch.setattr(rep_router, "record_event", fake_record)
     for role in ("physician", "admin"):
@@ -472,6 +475,8 @@ def test_t375_upload_stream_closed_and_orphan_object_deleted_on_failure(upload_e
     async def failing_one(c, sql, params=()):
         if sql.startswith("select 1"):
             return {"?column?": 1}
+        if "consume_rate_limit" in sql:  # shared per-user throttle (T1362)
+            return {"retry_after": 0}
         raise RuntimeError("insert failed")
 
     monkeypatch.setattr(files_router, "fetch_one", failing_one)
@@ -486,3 +491,27 @@ def test_t375_connections_and_clients_are_context_managed():
         src = (ROOT / "backend" / "app" / name).read_text(encoding="utf-8")
         assert not re.search(r"=\s*httpx\.AsyncClient\(", src.replace("return httpx.AsyncClient(", "")), name
         assert not re.search(r"(?<!os\.)(?<!def )\bopen\([^)]*\)\s*$", src, re.M), name
+
+
+# --------------------------------------------------------------------------- T295 confidential data at rest
+def test_t295_report_file_is_private_and_removed_after_download(isolated_tmp):
+    path, cleanup = reports.build_csv_export(("alarm_type", "count"), [{"alarm_type": "low_spo2", "count": 4}])
+    workdir = os.path.dirname(path)
+    assert Path(workdir).parent == isolated_tmp
+    if sys.platform != "win32":
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+        assert stat.S_IMODE(os.stat(workdir).st_mode) == 0o700
+    cleanup()  # run as the FileResponse background task once the download completes
+    assert not os.path.exists(path) and not os.path.exists(workdir)
+
+
+def test_t295_storage_private_and_no_plaintext_secrets_in_schema_or_bundle():
+    sql = "\n".join(p.read_text(encoding="utf-8").lower() for p in sorted((ROOT / "supabase" / "migrations").glob("*.sql")))
+    assert re.search(r"values \('clinical-files', 'clinical-files', false", sql)
+    monitors = sql.split("create table public.monitors", 1)[1].split(");", 1)[0]
+    secret_columns = re.findall(r"^\s*(\w*secret\w*)\s", monitors, re.M)
+    assert secret_columns and all(c.endswith("_hash") for c in secret_columns), secret_columns
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    bundle_check = next(line for line in ci.splitlines() if "grep -rEi" in line and " dist" in line)
+    for name in ("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_JWT_SECRET", "DATABASE_URL", "AUDIT_SIGNING_KEY"):
+        assert name in bundle_check, name

@@ -27,10 +27,10 @@ import secrets
 import sys
 from urllib.parse import urlsplit
 
-import httpx
 import psycopg
 
 from app.core.config import get_settings
+from app.core.outbound import supabase_client
 from app.services.device_auth import new_device_secret
 from app.services.identity import canonical_email
 from app.services.passwords import PasswordPolicy, context_words, generate_password
@@ -66,8 +66,7 @@ async def create_demo_staff(email_domain: str) -> None:
     key = s.supabase_service_role_key.get_secret_value()
     headers = {"apikey": key, "Authorization": f"Bearer {key}"}
     created: list[tuple[str, str, str, str]] = []
-    async with httpx.AsyncClient(base_url=str(s.supabase_url).rstrip("/"), timeout=15, verify=True,
-                                 follow_redirects=False) as client:
+    async with supabase_client(15, s) as client:
         for name, role in DEMO:
             email = demo_email(name, email_domain)
             pw = _password(name, email)

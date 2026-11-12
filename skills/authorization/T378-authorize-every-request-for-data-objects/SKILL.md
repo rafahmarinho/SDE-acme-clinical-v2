@@ -51,4 +51,4 @@ create policy alarms_ack on public.alarms for update to acme_api_rw
 - [ ] Pytest (`backend/tests/test_database_policies.py`): RLS denies the same accesses when queried directly as `acme_api_rw` with the nurse's claims.
 - [ ] Supplying `acknowledged_by`/`user_id` in a body is rejected (422) or ignored.
 
-**Status:** Pending
+**Status:** Applied

@@ -55,4 +55,4 @@ execute format('delete from public.%I where created_at < $1', p_table) using p_c
 - [ ] Pytest (`backend/tests/test_input_validation.py`): search `q="' or 1=1 --"` and `sort="name; drop table patients"` return 200/422 with no extra rows and no SQL error.
 - [ ] Every `execute` in `supabase/migrations` uses `format` with `%I/%L` or `USING`.
 
-**Status:** Pending
+**Status:** Applied

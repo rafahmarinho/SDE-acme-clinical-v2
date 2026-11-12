@@ -14,11 +14,14 @@ authentication, CORS or any route handler runs.
 * ``RateLimitMiddleware`` (T1363): token buckets per client, per IP and per sensitive route.
 
 Rate limiting here is a per-instance token bucket (Vercel functions are short-lived and scaled
-horizontally), so it is a defence-in-depth layer; Vercel Firewall rate limits are the primary control.
+horizontally). Expensive routes also consume a shared, per-verified-user budget in PostgreSQL
+(``app/core/ratelimit.py``, migration 0009, T1362) that holds across instances; Vercel Firewall rate
+limits remain the edge control.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import math
@@ -38,6 +41,7 @@ from app.core.validation import JsonStructureError, parse_json_object
 security_log = logging.getLogger("acme.security")
 
 ALLOWED_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 METHOD_OVERRIDE_HEADERS = ("x-http-method-override", "x-http-method", "x-method-override")
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 
@@ -61,6 +65,10 @@ DEFAULT_ALLOWED_HOSTS = ("*.vercel.app", "localhost", "127.0.0.1", "testserver")
 RAW_BODY_PATHS: frozenset[str] = frozenset({"/v1/csp-report"})
 
 REJECTION_STATUSES = frozenset({400, 405, 413, 414, 415, 422, 429, 431})
+# Server limit violations (body / URL / header size): logged as http_limit_violation; this many from one
+# client within a minute alerts administrators (notify_admins is additionally debounced per kind).
+HTTP_LIMIT_STATUSES = frozenset({413, 414, 431})
+LIMIT_ALERT_THRESHOLD = 20
 
 SECURITY_HEADERS = {
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
@@ -108,9 +116,16 @@ def _host_allowed(host_header: str, allowed: Iterable[str]) -> bool:
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: ASGIApp, allowed_hosts: Iterable[str] | None = None):
+    def __init__(self, app: ASGIApp, allowed_hosts: Iterable[str] | None = None,
+                 allowed_origins: Iterable[str] | None = None):
         super().__init__(app)
         self.allowed_hosts = tuple(allowed_hosts) if allowed_hosts else DEFAULT_ALLOWED_HOSTS
+        # Cross-site request forgery, defence in depth (T29): a browser-sent state-changing request whose Origin
+        # is not one of the SPA origins is refused before routing. None disables the check (unit-test apps).
+        self.allowed_origins = (frozenset(o.rstrip("/").lower() for o in allowed_origins)
+                                if allowed_origins is not None else None)
+        self._violations: dict[str, list[float]] = {}
+        self._alerts: set[asyncio.Task[None]] = set()
 
     def _precheck(self, request: Request) -> JSONResponse | None:
         """Request hygiene checks that run before routing, CORS and authentication."""
@@ -125,6 +140,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             return _error("Invalid host.", 400)
         if any(h in request.headers for h in METHOD_OVERRIDE_HEADERS):
             return _error("HTTP method override is not supported.", 400)
+        origin = request.headers.get("origin")
+        if (self.allowed_origins is not None and origin is not None and request.method in UNSAFE_METHODS
+                and request.url.path not in RAW_BODY_PATHS and origin.rstrip("/").lower() not in self.allowed_origins):
+            return _error("Cross-origin request refused.", 403)
         keys = [k for k, _ in request.query_params.multi_items()]
         if len(keys) != len(set(keys)) and any(keys.count(k) > 1 for k in set(keys) - MULTI_VALUED_QUERY_PARAMS):
             return _error("Duplicate query parameters are not allowed.", 400)
@@ -149,7 +168,29 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "status": response.status_code, "client_ip": client_ip(request),
                 "code": "VALIDATION_422" if response.status_code == 422 else f"HTTP_{response.status_code}",
             })
+        if response.status_code in HTTP_LIMIT_STATUSES:
+            self._limit_violation(request, response.status_code)
         return response
+
+    def _limit_violation(self, request: Request, status_code: int) -> None:
+        """HTTP server limit exceeded (T35): security event every time; admins alerted on sustained abuse."""
+        ip = client_ip(request)
+        security_log.warning("http_limit_violation", extra={
+            "request_id": request.state.request_id, "route": request.url.path[:200], "status": status_code,
+            "client_ip": ip, "outcome": "denied"})
+        now = time.monotonic()
+        recent = [t for t in self._violations.get(ip, ()) if now - t < 60] + [now]
+        self._violations[ip] = recent[-LIMIT_ALERT_THRESHOLD:]
+        if len(self._violations) > 10_000:
+            self._violations.clear()
+        if len(recent) >= LIMIT_ALERT_THRESHOLD:
+            self._violations[ip] = []
+            from app.core.audit import notify_admins  # local import: audit depends on the request context
+
+            task = asyncio.get_running_loop().create_task(
+                notify_admins("http_limit_violation", {"client_ip": ip, "status": status_code, "per_minute": len(recent)}))
+            self._alerts.add(task)
+            task.add_done_callback(self._alerts.discard)
 
 
 class BodySizeLimitMiddleware:

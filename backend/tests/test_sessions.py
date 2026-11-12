@@ -394,3 +394,72 @@ def test_t95_no_remember_me_and_session_storage_only():
     client_cfg = (web / "lib" / "supabase.ts").read_text(encoding="utf-8")
     assert "sessionStorage" in client_cfg and 'flowType: "pkce"' in client_cfg
 
+
+
+# --------------------------------------------------------------------------- T20 unique ids, reset after privilege change
+def test_t20_never_registered_session_id_is_rejected(sdb, identities):
+    uid, sid, _ = login(identities)
+    assert sid not in sdb.sessions  # valid signature, but this session was never registered by /v1/auth/session
+    with pytest.raises(Exception) as exc:
+        run(auth_router.enforce_session(fake_request(), principal_for(uid, sid)))
+    assert exc.value.status_code == 401
+
+
+def test_t20_old_token_rejected_after_revoke_user_sessions(client, sdb, identities):
+    uid, sid, h = login(identities)
+    assert client.post("/v1/auth/session", headers=h).status_code == 200
+    run(auth_router.enforce_session(fake_request(), principal_for(uid, sid)))
+    sdb.apply("select public.revoke_user_sessions(%s)", ("logout_all",))
+    with pytest.raises(Exception) as exc:
+        run(auth_router.enforce_session(fake_request(), principal_for(uid, sid)))
+    assert exc.value.status_code == 401
+
+
+def _staff_db(fake_db, target: str, requester: str):
+    def one(sql, params):
+        if "from public.staff_role_requests" in sql:
+            return {"target_user_id": target, "new_role": "physician", "requested_by": requester, "status": "pending"}
+        if "for update" in sql and "staff_profiles" in sql:
+            return {"role": "nurse", "is_active": True}
+        return {"user_id": target, "email": "t@acme.test", "full_name": "T U", "role": "physician", "is_active": True,
+                "ward_ids": [], "last_login_at": None}
+    fake_db.one = one
+
+
+def test_t20_approving_a_role_change_revokes_the_targets_sessions(client, identities, fake_db):
+    from app.routers import staff
+
+    target, requester = str(uuid.uuid4()), str(uuid.uuid4())
+    _staff_db(fake_db, target, requester)
+    _, _, h = login(identities, "admin", auth_time=int(datetime.now(UTC).timestamp()))
+    r = client.post(f"/v1/staff/role-requests/{uuid.uuid4()}/approve", headers=h)
+    assert r.status_code == 200, r.text
+    revokes = [p for kind, sql, p in fake_db.calls if sql == staff.REVOKE_SESSIONS_SQL]
+    assert revokes == [(target,)]
+
+
+@pytest.mark.parametrize("body,revoked", [({"role": "physician"}, True), ({"is_active": False}, True),
+                                          ({"ward_ids": []}, False)])
+def test_t20_role_change_or_deactivation_revokes_sessions(client, identities, fake_db, monkeypatch, body, revoked):
+    from app.routers import staff
+
+    async def no_ban(*a, **k):
+        return None
+
+    monkeypatch.setattr(staff, "_set_sign_in_ban", no_ban)
+    target = str(uuid.uuid4())
+    _staff_db(fake_db, target, str(uuid.uuid4()))
+    _, _, h = login(identities, "admin", auth_time=int(datetime.now(UTC).timestamp()))
+    r = client.patch(f"/v1/staff/{target}", headers=h, json=body)
+    assert r.status_code == 200, r.text
+    assert ([p for kind, sql, p in fake_db.calls if sql == staff.REVOKE_SESSIONS_SQL] == [(target,)]) is revoked
+
+
+def test_t20_session_reset_function_is_admin_only_and_kills_refresh_tokens():
+    from pathlib import Path
+
+    sql = (Path(__file__).resolve().parents[2] / "supabase" / "migrations" /
+           "0011_session_reset_on_privilege_change.sql").read_text(encoding="utf-8")
+    assert "has_permission('staff:manage')" in sql and "delete from auth.sessions" in sql
+    assert "revoked_reason = 'admin'" in sql and "security definer set search_path" in sql
+    assert "from public, anon, authenticated" in sql

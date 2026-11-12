@@ -10,6 +10,7 @@ Secure by default (skills/secure-config-supply-chain T2349/T62/T175):
 See docs/security/secure-config.md for every setting, its default and its security impact.
 """
 
+import re
 from functools import lru_cache
 from typing import Annotated, Literal
 from urllib.parse import parse_qs, urlsplit
@@ -18,6 +19,9 @@ from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_valida
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_EXACT_ORIGIN = re.compile(r"https?://[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::\d{1,5})?/?")
+# libpq parameters the API's DSN may carry (anything else, e.g. host=, options=, user=, is rejected).
+_DSN_QUERY_PARAMS = frozenset({"sslmode", "sslrootcert", "connect_timeout", "application_name"})
 
 
 class Settings(BaseSettings):
@@ -65,6 +69,17 @@ class Settings(BaseSettings):
             return [v.strip() for v in value.split(",") if v.strip()]
         return value
 
+    @field_validator("cors_allowed_origins", mode="after")
+    @classmethod
+    def _exact_origins_only(cls, value: list[AnyHttpUrl]) -> list[AnyHttpUrl]:
+        """CORS origins are exact scheme://host[:port] values: no wildcard, regex, path, query or credentials (T257)."""
+        for origin in value:
+            text = str(origin)
+            if (not _EXACT_ORIGIN.fullmatch(text) or origin.username or origin.password
+                    or (origin.path or "/") != "/" or origin.query or origin.fragment):
+                raise ValueError("CORS_ALLOWED_ORIGINS entries must be exact origins such as https://app.example.org")
+        return value
+
     @field_validator("supabase_anon_key", "supabase_service_role_key", "supabase_jwt_secret", "database_url")
     @classmethod
     def _not_empty_or_placeholder(cls, value: SecretStr) -> SecretStr:
@@ -76,7 +91,18 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _require_tls(cls, value: SecretStr) -> SecretStr:
-        modes = parse_qs(urlsplit(value.get_secret_value()).query).get("sslmode", [])
+        # Connection-string parameter pollution (T2599): a single postgres URL, one host, only
+        # allow-listed query parameters, each at most once (no host=/options=/user= overrides).
+        parts = urlsplit(value.get_secret_value())
+        if parts.scheme not in ("postgresql", "postgres"):
+            raise ValueError("DATABASE_URL must be a postgresql:// URL")
+        if "," in parts.netloc or not parts.hostname or any(c in parts.netloc for c in " ;\r\n"):
+            raise ValueError("DATABASE_URL must name exactly one database host")
+        query = parse_qs(parts.query, keep_blank_values=True)
+        unknown = set(query) - _DSN_QUERY_PARAMS
+        if unknown or any(len(v) != 1 for v in query.values()):
+            raise ValueError("DATABASE_URL has unsupported or duplicated connection parameters")
+        modes = query.get("sslmode", [])
         if modes != ["verify-full"]:
             raise ValueError("DATABASE_URL must enforce TLS with certificate verification (sslmode=verify-full)")
         return value

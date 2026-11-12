@@ -615,3 +615,33 @@ def test_t2477_redeploy_drill_rebuilds_database_from_git():
     assert len(prefixes) == len(set(prefixes)) and prefixes == sorted(prefixes)
     seed = (ROOT / "supabase" / "seed.sql").read_text(encoding="utf-8")
     assert len(re.findall(r"\('PT-\d{4}'", seed)) == 12 and "generate_series(1, 10)" in seed
+
+
+# =========================================================================== T2599 connection string pollution
+GOOD_DSN = "postgresql://acme_api:Test-DB-Pw-7f3k9q2m@db.example:5432/postgres?sslmode=verify-full"
+
+
+@pytest.mark.parametrize("dsn", [
+    "postgresql://acme_api:Test-DB-Pw-7f3k9q2m@db.example:5432/postgres?sslmode=disable",
+    GOOD_DSN + "&host=attacker.example",
+    "postgresql://acme_api:Test-DB-Pw-7f3k9q2m@db.example,attacker.example/postgres?sslmode=verify-full",
+    GOOD_DSN + "&options=-c%20role%3Dpostgres",
+    GOOD_DSN + "&user=postgres",
+    GOOD_DSN + "&sslmode=verify-full",
+    "mysql://acme_api:Test-DB-Pw-7f3k9q2m@db.example:3306/postgres?sslmode=verify-full",
+    "http://acme_api:Test-DB-Pw-7f3k9q2m@db.example/postgres?sslmode=verify-full",
+])
+def test_t2599_settings_reject_polluted_connection_strings(bare_env, monkeypatch, dsn):
+    monkeypatch.setenv("DATABASE_URL", dsn)
+    with pytest.raises(ValidationError) as exc:
+        Settings()
+    assert "Test-DB-Pw-7f3k9q2m" not in str(exc.value)
+
+
+def test_t2599_well_formed_dsn_accepted_and_read_only_by_config_and_db(bare_env, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", GOOD_DSN + "&sslrootcert=system&connect_timeout=5")
+    assert Settings()
+    readers = sorted(p.name for p in (Path(__file__).resolve().parents[1] / "app").rglob("*.py")
+                     if "database_url" in p.read_text(encoding="utf-8").lower())
+    # passwords.py inspects the DSN structure for problems, cli.py only reads ADMIN_DATABASE_URL for operators.
+    assert set(readers) <= {"config.py", "db.py", "passwords.py", "cli.py"}, readers

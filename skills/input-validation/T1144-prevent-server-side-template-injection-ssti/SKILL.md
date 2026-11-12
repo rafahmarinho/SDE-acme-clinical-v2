@@ -52,4 +52,4 @@ def alarm_message(label: str, value: int) -> str:
 - [ ] Test in `backend/tests/test_input_validation.py`: a ward/observation/report title value of `{{7*7}}` and `{0.__class__}` is rendered literally (no `49`, no class name) in report output.
 - [ ] Any template engine in use is the sandboxed environment with autoescape enabled.
 
-**Status:** Pending
+**Status:** Applied

@@ -51,4 +51,4 @@ export async function putEncrypted(name: string, value: unknown) {
 - [ ] Vitest (`frontend/src/auth/supabaseClient.test.ts`): the Supabase client is configured with session-scoped storage; after login, `localStorage` has no `sb-*-auth-token`.
 - [ ] Manual check (DevTools > Application) after browsing patients shows no patient data in any storage area.
 
-**Status:** Pending
+**Status:** Applied

@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from app.core.audit import record_event
 from app.core.config import Settings, get_settings
+from app.core.outbound import supabase_client
 from app.core.errors import DomainError
 from app.core.security import Perm, Principal, require, require_recent_auth
 from app.db import fetch_all, fetch_one, transaction
@@ -64,7 +65,11 @@ class RoleRequestOut(BaseModel):
 
 ADMIN_PROMOTION_NEEDS_APPROVAL = ("Granting the administrator role needs a second administrator: create a role request "
                                   "and ask another administrator to approve it.")
-_ROLE_REQUESTS_SQL = """select id, target_user_id, new_role::text as new_role, requested_by, requested_at, status
+# Revokes every app session of the target and deletes its Supabase Auth sessions/refresh tokens
+# (supabase/migrations/0011_session_reset_on_privilege_change.sql).
+REVOKE_SESSIONS_SQL = "select public.revoke_sessions_for_user(%s)"
+
+_ROLE_REQUESTS_SQL ="""select id, target_user_id, new_role::text as new_role, requested_by, requested_at, status
                         from public.staff_role_requests where status = 'pending' order by requested_at desc limit %s"""
 _ROLE_REQUEST_INSERT_SQL = """insert into public.staff_role_requests (target_user_id, new_role, requested_by)
                               values (%s, %s::public.app_role, %s)
@@ -73,12 +78,8 @@ _ROLE_REQUEST_INSERT_SQL = """insert into public.staff_role_requests (target_use
 
 def supabase_admin_client(settings: Settings) -> httpx.AsyncClient:
     """Outbound API -> Supabase Auth Admin: HTTPS with certificate verification, service key in headers only."""
-    base = str(settings.supabase_url).rstrip("/")
-    if settings.is_production and not base.startswith("https://"):
-        raise RuntimeError("SUPABASE_URL must use https")
     key = settings.supabase_service_role_key.get_secret_value()
-    return httpx.AsyncClient(base_url=base, timeout=10, verify=True, follow_redirects=False,
-                             headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    return supabase_client(10, settings, headers={"apikey": key, "Authorization": f"Bearer {key}"})
 
 
 @router.get("", response_model=Page[StaffOut])
@@ -168,6 +169,10 @@ async def update_staff(user_id: UUID, body: StaffUpdate, request: Request, princ
                            details={"role": [current["role"], body.role.value if body.role else current["role"]],
                                     "is_active": body.is_active, "wards_changed": body.ward_ids is not None},
                            conn=conn, request_id=request.state.request_id)
+        role_changed = body.role is not None and body.role.value != current["role"]
+        if role_changed or body.is_active is False:
+            # Privilege change: the user's existing sessions are revoked; they sign in again (T20).
+            await conn.execute(REVOKE_SESSIONS_SQL, (str(user_id),))
         if body.is_active is not None and body.is_active != current["is_active"]:
             # Inside the transaction: if Supabase Auth cannot apply the ban, the deactivation is rolled back.
             await _set_sign_in_ban(user_id, banned=not body.is_active)
@@ -230,6 +235,7 @@ async def approve_role_change(role_request_id: UUID, request: Request, principal
                where id = %s and status = 'pending'""", (str(principal.user_id), str(role_request_id)))
         await conn.execute("update public.staff_profiles set role = %s::public.app_role where user_id = %s",
                            (req["new_role"], target))
+        await conn.execute(REVOKE_SESSIONS_SQL, (target,))  # sessions issued under the old role end now (T20)
         await record_event(principal, "staff.role_change_approved", "staff_profile", target,
                            details={"role_request_id": str(role_request_id), "new_role": req["new_role"],
                                     "requested_by": str(req["requested_by"])}, conn=conn,
