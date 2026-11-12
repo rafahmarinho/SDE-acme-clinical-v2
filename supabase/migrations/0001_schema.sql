@@ -1,0 +1,3 @@
+-- Placeholder: schema for wards, beds, patients, monitors, readings, alarms, observations,
+-- maintenance, thresholds, staff profiles/roles, simulation events.
+-- Row-level security, least-privilege API role and RBAC are defined per skills/database recipes.

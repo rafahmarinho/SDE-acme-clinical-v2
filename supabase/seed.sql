@@ -1,0 +1,2 @@
+-- Placeholder: demo data (12 fictional patients, 10 simulated monitors, demo staff per role).
+-- Demo accounts must not ship with default or shared passwords (see skills/authentication).

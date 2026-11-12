@@ -1,0 +1,10 @@
+# Backend dependencies (from PRD: Python + FastAPI + Pydantic + Supabase). Pin current stable versions during implementation.
+fastapi
+pydantic
+pydantic-settings
+uvicorn[standard]
+supabase
+psycopg[binary]
+pyjwt[crypto]
+httpx
+pytest
