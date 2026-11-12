@@ -1,1 +1,5 @@
-"""Vercel serverless entry point (placeholder): will expose app from app.main."""
+"""Vercel serverless entry point: exposes the ASGI app from app.main."""
+
+from app.main import app
+
+__all__ = ["app"]
