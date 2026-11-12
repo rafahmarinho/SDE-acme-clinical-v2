@@ -50,4 +50,4 @@ grant select on identity_vault.patient_identity to acme_api_rw;
 - [ ] Pytest: a nurse not assigned to the ward gets the pseudonym but not the display name; with break-glass the name is returned and the access is audited.
 - [ ] Pytest: CSV export and audit report contain `PT-nnnn` codes and no `display_name` values.
 
-**Status:** Pending
+**Status:** Applied

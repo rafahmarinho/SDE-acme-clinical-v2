@@ -37,6 +37,11 @@ disposition) after an RLS-scoped lookup (other wards' files → 404). SHA-256, s
 recorded and the upload is audited. Uploads never live in `frontend/public`, `dist/` or the
 backend package.
 
+Bucket privacy is verified before it is relied on (T214): before any upload or signed URL the API reads
+`GET /storage/v1/bucket/clinical-files` and requires `public == false` (cached 5 minutes per instance). A public or
+unverifiable bucket is a `storage_bucket_not_private` security event, raises an admin alert and the request fails
+closed with 503 `storage_unavailable`. Signed URLs and file contents are never logged.
+
 ## Temporary files (T157, T300, T572, T595)
 
 Only CSV exports (`GET /v1/reports/export.csv?kind=ward_activity|audit_events`) touch the
@@ -44,7 +49,9 @@ filesystem. Each export: `sweep_expired()` (dirs older than 10 min removed, plan
 unlinked without following), `tempfile.mkdtemp` (random name, 0700) under
 `<tmp>/acme-reports`, the file created with `O_CREAT|O_EXCL|O_NOFOLLOW` (0600), sent with
 `FileResponse`, and the directory removed by a `BackgroundTask` after sending (or immediately on
-render/audit failure). `open_no_follow` rejects symlinks, non-regular files and hard links.
+render/audit failure). `open_no_follow` rejects symlinks, non-regular files and hard links. The
+workspace root itself must be a real directory owned by the API process with mode 0700
+(`check_private_dir`): a pre-created, world-writable or foreign-owned root is refused.
 Symlink tests run on Linux CI (skipped on Windows dev machines). Report kinds come from an enum.
 
 ## Configuration integrity (T345, T346)

@@ -362,6 +362,294 @@ function YourDataCard({ me, onRequested }: { me: ProfileMe; onRequested: () => P
   );
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// Optional uses of personal data (T178/T604): consent per purpose, off by default, withdrawable with one toggle.
+// ---------------------------------------------------------------------------------------------------------
+interface ConsentPurpose {
+  purpose: string;
+  title: string;
+  description: string;
+  data_categories: string[];
+  retention: string;
+  third_parties: string[];
+  withdrawal: string;
+  required: boolean;
+  active: boolean;
+  granted_at: string | null;
+}
+
+interface ConsentsResponse {
+  notice_version: string;
+  purposes: ConsentPurpose[];
+}
+
+const PHONE_PATTERN = /^\+[1-9][0-9]{7,14}$/;
+
+function EscalationPhone() {
+  const [phone, setPhone] = useState("");
+  const [saved, setSaved] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const r = await request<{ escalation_phone: string | null }>("GET", "/v1/me/escalation-contact");
+        if (active) setSaved(r?.escalation_phone ?? null);
+      } catch {
+        // the form still works; the current number is simply not shown
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await request<{ escalation_phone: string | null }>("PUT", "/v1/me/escalation-contact", {
+        body: { escalation_phone: phone.trim() },
+      });
+      setSaved(r?.escalation_phone ?? phone.trim());
+      setPhone("");
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save}>
+      <ErrorMessage error={error} />
+      {saved && <p className="muted small">Current number: {saved}</p>}
+      <label>
+        Mobile phone for escalation (optional)
+        <input
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          placeholder="+5511912345678"
+          maxLength={16}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+      </label>
+      <button type="submit" className="secondary" disabled={busy || !PHONE_PATTERN.test(phone.trim())}>
+        Save number
+      </button>
+    </form>
+  );
+}
+
+function ConsentCard({ locked }: { locked: boolean }) {
+  const [data, setData] = useState<ConsentsResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const r = await request<ConsentsResponse>("GET", "/v1/me/consents");
+        if (active && r) setData(r);
+      } catch (err) {
+        if (active) setError(err);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function grant(p: ConsentPurpose) {
+    setBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const r = await request<ConsentsResponse>("POST", "/v1/me/consents", {
+        body: { purpose: p.purpose, notice_version: PRIVACY_NOTICE_VERSION },
+      });
+      if (r) setData(r);
+      setStatus(`Consent given for "${p.title}".`);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdraw(p: ConsentPurpose) {
+    setBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const r = await request<ConsentsResponse>("DELETE", "/v1/me/consents", { query: { purpose: p.purpose } });
+      if (r) setData(r);
+      setStatus(`Consent for "${p.title}" withdrawn on ${formatDateTime(new Date().toISOString())}. The data was deleted.`);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function decline(p: ConsentPurpose) {
+    setStatus(`"${p.title}" stays off. You can change this at any time.`);
+  }
+
+  const purposes = data?.purposes ?? [];
+  return (
+    <div className="card">
+      <h2>Optional uses of your data</h2>
+      <p className="muted small">
+        Everything ACME Clinical needs to work is described in the privacy notice and does not depend on consent. The
+        uses below are optional and stay off unless you switch them on. You can withdraw at any time.
+      </p>
+      <ErrorMessage error={error} />
+      {purposes.map((p) => (
+        <fieldset key={p.purpose} disabled={locked || busy}>
+          <legend>
+            {p.title} <span className="muted small">({p.required ? "required" : "optional"})</span>
+          </legend>
+          <p>{p.description}</p>
+          <dl className="facts small">
+            <dt>Data</dt>
+            <dd>{p.data_categories.join(", ")}</dd>
+            <dt>Kept</dt>
+            <dd>{p.retention}</dd>
+            <dt>Shared with</dt>
+            <dd>{p.third_parties.join(" ") || "Nobody"}</dd>
+            <dt>Withdrawal</dt>
+            <dd>{p.withdrawal}</dd>
+          </dl>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={p.active}
+              aria-label={`Allow ${p.title}`}
+              onChange={(e) => void (e.target.checked ? grant(p) : withdraw(p))}
+            />
+            {p.active ? `On since ${formatDateTime(p.granted_at)}` : "Off"}
+          </label>
+          {p.active ? (
+            p.purpose === "escalation_contact" && <EscalationPhone />
+          ) : (
+            <div className="actions">
+              <button type="button" onClick={() => void grant(p)}>
+                Accept
+              </button>
+              <button type="button" className="secondary" onClick={() => decline(p)}>
+                Decline
+              </button>
+            </div>
+          )}
+        </fieldset>
+      ))}
+      {locked && <p className="muted small">Acknowledge the privacy notice first.</p>}
+      {status && <p role="status">{status}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Restriction of processing (T754): see restrictions on my data, ask the administrators for one.
+// ---------------------------------------------------------------------------------------------------------
+const RESTRICTABLE: [string, string][] = [
+  ["staff_activity_report", "Staff activity reports"],
+  ["statistics", "Statistics"],
+  ["research_extract", "De-identified research extracts"],
+];
+
+interface OwnRestriction {
+  activity: string;
+  basis: string;
+  created_at: string;
+  lifted_at: string | null;
+}
+
+function RestrictionCard() {
+  const [items, setItems] = useState<OwnRestriction[]>([]);
+  const [activity, setActivity] = useState(RESTRICTABLE[0]![0]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const r = await request<{ items: OwnRestriction[] }>("GET", "/v1/me/processing-restrictions");
+        if (active) setItems(r?.items ?? []);
+      } catch {
+        // nothing to show
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function ask(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      await request("POST", "/v1/me/processing-restrictions/request", { body: { activity } });
+      setStatus("Your request was sent to the administrators.");
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const label = (a: string) => RESTRICTABLE.find(([k]) => k === a)?.[1] ?? humanize(a);
+  return (
+    <div className="card">
+      <h2>Restrict processing</h2>
+      <p className="muted small">
+        You can object to secondary uses of your data. Clinical care and the legally required audit trail cannot be
+        restricted.
+      </p>
+      <ErrorMessage error={error} />
+      {items.length > 0 && (
+        <ul>
+          {items.map((r) => (
+            <li key={`${r.activity}-${r.created_at}`}>
+              {label(r.activity)}: restricted since {formatDateTime(r.created_at)}
+              {r.lifted_at ? ` (lifted ${formatDateTime(r.lifted_at)})` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={ask}>
+        <label>
+          Activity
+          <select value={activity} onChange={(e) => setActivity(e.target.value)}>
+            {RESTRICTABLE.map(([value, text]) => (
+              <option key={value} value={value}>
+                {text}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="secondary" disabled={busy}>
+          Ask an administrator to restrict
+        </button>
+      </form>
+      {status && <p role="status">{status}</p>}
+    </div>
+  );
+}
+
 export default function Profile() {
   const { me, refreshMe } = useAuth();
   if (!me) return <LoadingState />;
@@ -376,6 +664,10 @@ export default function Profile() {
         <NoticeCard me={profile} onAccepted={refreshMe} />
       </div>
       <YourDataCard me={profile} onRequested={refreshMe} />
+      <div className="grid two">
+        <ConsentCard locked={locked} />
+        <RestrictionCard />
+      </div>
     </section>
   );
 }

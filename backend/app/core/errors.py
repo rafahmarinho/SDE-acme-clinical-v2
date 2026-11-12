@@ -17,7 +17,9 @@ error handlers depend on both.
 from __future__ import annotations
 
 import logging
+import ssl
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -64,6 +66,18 @@ def _rid(request: Request) -> str:
 
 def error_body(request: Request, message: str, code: str, **extra: object) -> dict:
     return {"error": message, "code": code, "request_id": _rid(request), **extra}
+
+
+def is_tls_verification_failure(exc: BaseException) -> bool:
+    """True when an exception (or its cause chain) is a TLS certificate / hostname verification failure."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(current):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -116,6 +130,23 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(error_body(request, MESSAGES["busy"], "busy"), status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             headers={"Retry-After": "5"})
 
+    async def duplicate(request: Request, exc: Exception) -> JSONResponse:
+        # A unique constraint (one active patient per identity, one monitor per bed, ...) refused a duplicate
+        # record (T742): a known 409, never a 500 with the constraint text.
+        log.info("unique_violation", extra={"request_id": _rid(request), "path": request.url.path})
+        return JSONResponse(error_body(request, MESSAGES["conflict"], "conflict"), status_code=status.HTTP_409_CONFLICT)
+
+    async def upstream_unavailable(request: Request, exc: Exception) -> JSONResponse:
+        # Outbound call to Supabase failed. A certificate / chain / hostname failure is a security event; the
+        # client never falls back to plaintext or unverified TLS and gets a generic 503 (T156/T21).
+        tls = is_tls_verification_failure(exc)
+        sec_event("tls_verification_failed" if tls else "dependency_unavailable", outcome="failure",
+                  level=logging.ERROR, error_type=type(exc).__name__, dependency="supabase")
+        return JSONResponse(error_body(request, MESSAGES["busy"], "dependency_unavailable"),
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, headers={"Retry-After": "15"})
+
+    app.add_exception_handler(pg_errors.UniqueViolation, duplicate)
+    app.add_exception_handler(httpx.TransportError, upstream_unavailable)
     for exc_type in (OperationalError, PoolTimeout):
         app.add_exception_handler(exc_type, unavailable)
     for exc_type in (pg_errors.LockNotAvailable, pg_errors.DeadlockDetected, pg_errors.QueryCanceled):

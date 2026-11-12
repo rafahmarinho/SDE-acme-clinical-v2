@@ -57,4 +57,4 @@ async def verify_integrity(request: Request, principal: Admin, limit: int = SIGN
 - [ ] `backend/tests/test_database_policies.py`: `update`/`delete`/`truncate` on `public.events` as `acme_api` fail with a permission error.
 - [ ] `test_t438_audit_report_forbidden_for_nurse_and_physician` passes.
 
-**Status:** Pending
+**Status:** Applied

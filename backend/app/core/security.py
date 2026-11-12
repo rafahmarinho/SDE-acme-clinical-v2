@@ -111,6 +111,13 @@ SELF_SERVICE_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("GET", "/v1/me/export"),
     ("POST", "/v1/me/export"),
     ("POST", "/v1/me/erasure-request"),
+    ("GET", "/v1/me/consents"),
+    ("POST", "/v1/me/consents"),
+    ("DELETE", "/v1/me/consents"),
+    ("GET", "/v1/me/escalation-contact"),
+    ("PUT", "/v1/me/escalation-contact"),
+    ("GET", "/v1/me/processing-restrictions"),
+    ("POST", "/v1/me/processing-restrictions/request"),
     ("GET", "/v1/simulation"),
     ("GET", "/v1/events"),  # RLS: non-admins see only their own events
 })

@@ -19,4 +19,4 @@ description: Offload ACME Clinical HTTP request handling protections (request bu
 
 **Recommended Action:** Platform owner: (1) enable Vercel Firewall for the API project with rate-limit rules on `/v1/auth/*`, `/v1/files/*` uploads and `/v1/reports/export.csv`, and a general per-IP limit; (2) enable Attack Challenge Mode playbook for incidents; (3) restrict methods/paths not used by the API via WAF custom rules; (4) set function `maxDuration` and memory in `backend/vercel.json` to bound resource use per request; (5) review Supabase API rate limits and Auth rate limits (`supabase/config.toml` `[auth.rate_limit]`); (6) record the configuration in `docs/security/deployment.md` and test with a controlled load test.
 
-**Status:** Documented
+**Status:** Applied

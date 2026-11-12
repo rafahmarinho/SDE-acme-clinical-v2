@@ -29,6 +29,9 @@ has no label, or when a PII/PHI column is missing from this document (T313/T314)
 | Sign-in IP | `staff_profiles.previous_login_ip`, `staff_profiles.last_login_ip` | PII (online identifier) | system | account-takeover notice | cleared on pseudonymisation | self, admin |
 | Notice acknowledgements | `privacy_consents.user_id`, `privacy_consents.accepted_at` | PII | self | evidence of notification | life of the account | self, admin |
 | Erasure requests | `privacy_requests.user_id`, `privacy_requests.requested_at`, `privacy_requests.decided_by` | PII | self / admin | data-subject rights | life of the account | self, admin |
+| Consent grants (optional purposes) | `consent_grants.user_id`, `consent_grants.granted_at`, `consent_grants.withdrawn_at` | PII | self | evidence of consent and withdrawal (T178/T604) | life of the account; withdrawn on erasure | self only |
+| Escalation phone (optional, consent-based) | `staff_optional_contacts.user_id`, `staff_optional_contacts.escalation_phone` | PII (direct) | self, only with an active `escalation_contact` grant | alarm escalation by text message (simulated) | until withdrawal or erasure (deleted immediately) | self only |
+| Processing restrictions | `processing_restrictions.subject_id`, `processing_restrictions.created_by`, `processing_restrictions.lifted_by` | PII (indirect) | administrators | restriction of secondary processing (T754) | life of the account | subject (own), admin |
 | Patient identity | `patients.display_name` | PHI (direct) | admission (demo seed) | care | until `retention_until` after discharge | clinical roles with ward access |
 | Patient key / code | `patients.id`, `patients.pseudonym` | PHI (pseudonymous) | system | linking records without names | as above | clinical roles; biomedical technicians (devices only, no API access) |
 | Quasi-identifiers | `patients.birth_year`, `patients.ward_id`, `patients.bed_id`, `patients.admitted_at`, `patients.discharged_at` | PHI (quasi) | admission | care, bed management | as above | clinical roles |
@@ -90,7 +93,29 @@ bed; cells with fewer than 5 alarms (or fewer than 5 distinct patients for vital
 database role can read only these views. The in-app ward activity report returns counts and durations only.
 Re-identification risk: low (aggregates over a ward-day with k >= 5); residual risk from very small wards is accepted
 because suppression removes such cells. Patient-identifying views (patient list/detail) are primary care use and are
-restricted to clinical roles with ward access.
+restricted to clinical roles with ward access. The CSV export of the ward activity report applies the same
+suppression (counts below 5 are blank, never the exact value) (T544).
+
+**De-identified research extract (T377).** `GET /v1/reports/research-extract` (administrators with
+`settings:manage`, audited with row/subject counts only) is the single path for record-level secondary use
+(research, alarm-threshold tuning, training data). It applies Safe Harbor removal (`PHI_DROP` in
+`backend/app/services/reports.py`): no patient UUID, `PT-nnnn` pseudonym, name, birth year, bed, monitor id/serial,
+timestamps, ECG trace, observation or acknowledgement text, file names or Storage paths. Each patient gets a subject
+code from HMAC-SHA256 with a random per-extract key that is discarded, so codes differ between extracts and cannot be
+linked back; times are offsets in seconds from the subject's first reading; wards with fewer than 5 distinct patients
+are dropped. Patients restricted for `research_extract` or `statistics` are excluded.
+
+## Pseudonymisation (T744)
+
+Patient pseudonyms (`patients.pseudonym`, `PT-nnnn`) are assigned codes, not derived from the identity (no hash of
+the name), and the mapping pseudonym -> identity exists only in `public.patients`, protected as a separate trust
+zone: forced row-level security (`can_access_patient`: ward assignment or an active, time-boxed break-glass grant,
+every use audited by `record_break_glass_use`), no grant to `anon`/`authenticated` (the browser only sees UUID-keyed
+Realtime rows without names), no access for `acme_reporting` (views only, no pseudonyms) and no access for
+biomedical technicians (no `patient:read`). Staff outside the ward get 404, not a name. Reports, CSV exports, the
+research extract, audit events and alerts carry UUIDs or derived codes only, never `display_name`. Staff
+pseudonymisation on erasure replaces name and e-mail (`pseudonymise_staff`). Re-identification by a person with ward
+access is the intended clinical use; any other re-identification requires break-glass and is reviewed.
 
 ## Data quality (T743)
 
@@ -98,4 +123,7 @@ Accuracy is enforced at three layers: strict Pydantic request models (types, len
 fields rejected), database constraints (`not null`, `check`, foreign keys, partial unique indexes such as one active
 monitor per bed, canonical unique e-mail), and server-assigned authorship and timestamps (`author_id` from the token,
 `created_at default now()`). Staff correct their own name on the Profile page; e-mail changes are confirmed by
-Supabase Auth before they take effect.
+Supabase Auth before they take effect. Duplicate records are refused (T742): one active patient per (name, birth
+year, ward) (`patients_one_active_identity`, 0013), one patient per bed (`patients.bed_id unique`) and one active
+monitor per bed; any unique-constraint violation returns a generic 409 `conflict`, never a 500. Every profile change
+is audited with the field names (not the values).

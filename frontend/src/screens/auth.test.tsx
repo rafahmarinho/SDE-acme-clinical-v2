@@ -330,3 +330,52 @@ describe("session registration on sign-in (T20)", () => {
     for (const call of requestMock.mock.calls as unknown[][]) expect(String(call[1])).not.toMatch(/token/i);
   });
 });
+
+describe("secure password reset (T2)", () => {
+  async function submitReset(email: string) {
+    const view = render(
+      <MemoryRouter>
+        <ForgotPassword />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: email } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send reset link" }));
+    });
+    const text = (await screen.findByRole("status")).textContent;
+    const storage = window.localStorage.length + window.sessionStorage.length + document.cookie.length;
+    view.unmount();
+    return { text, storage };
+  }
+
+  it("shows the identical confirmation for an existing address, an unknown address and a thrown error", async () => {
+    auth.resetPasswordForEmail
+      .mockResolvedValueOnce({ data: {}, error: null })
+      .mockResolvedValueOnce({ data: null, error: { status: 400, message: "User not found" } })
+      .mockRejectedValueOnce(new Error("network down / rate limited"));
+    const results = [];
+    for (const email of ["nora.lindqvist@acme-clinical.org", "nobody@acme-clinical.org", "boom@acme-clinical.org"]) {
+      results.push(await submitReset(email));
+    }
+    expect(new Set(results.map((r) => r.text)).size).toBe(1);
+    expect(results[0]!.text).toMatch(GENERIC_RESET_MESSAGE);
+    expect(results.every((r) => r.storage === 0)).toBe(true); // no cookie or storage that differs by input
+  });
+
+  it("after a reset from the e-mail link every session on every device is signed out", async () => {
+    window.history.replaceState(null, "", "/reset-password?code=one-time-pkce-code");
+    auth.getSession.mockResolvedValue({ data: { session: SESSION } });
+    auth.updateUser.mockResolvedValue({ data: {}, error: null });
+    renderWithAuth(<ResetPassword />);
+    const field = await screen.findByLabelText("New password");
+    await waitFor(() => expect(apiMock.securitySettings).toHaveBeenCalled());
+    fireEvent.change(field, { target: { value: "Violet-Harbor-Lantern-82" } });
+    fireEvent.change(screen.getByLabelText("Confirm new password"), { target: { value: "Violet-Harbor-Lantern-82" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+    });
+    expect(auth.updateUser).toHaveBeenCalledWith({ password: "Violet-Harbor-Lantern-82" });
+    expect(auth.signOut).toHaveBeenCalledWith({ scope: "global" });
+    expect(screen.queryByLabelText("Current password")).toBeNull(); // recovery mode: no current password asked
+  });
+});

@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from app.core import audit
 from app.core import logging as app_logging
 from app.core.config import Settings
-from app.core.security import PERMISSIONS, Principal, Role
+from app.core.security import PERMISSIONS, Perm, Principal, Role
 from app.main import create_app
 from app.services import integrity, reports
 from tests.conftest import add_identity, make_token
@@ -649,3 +649,20 @@ def test_t2599_connection_strings_in_log_lines_are_redacted():
         out = app_logging.redact(f"pool error connecting with {dsn}")
         assert "Sup3r" not in out and "p%40ss" not in out, out
         assert "[REDACTED]@" in out
+
+
+# --------------------------------------------------------------------------- T349 audit information protected
+def test_t349_live_suite_proves_the_api_role_cannot_alter_audit_records():
+    suite = (ROOT / "supabase" / "tests" / "access_control.sql").read_text(encoding="utf-8").lower()
+    for stmt in ("'update public.events set action = action'", "'delete from public.events'", "'truncate public.events'"):
+        assert stmt in suite, stmt
+    assert "exception when insufficient_privilege" in suite
+
+
+def test_t349_audit_data_is_classified_and_admin_only():
+    doc = (ROOT / "docs" / "security" / "data-classification.md").read_text(encoding="utf-8")
+    assert "`events` (audit trail)" in doc and "append-only and hash-chained" in doc
+    assert Perm.EVENTS_READ_ALL in PERMISSIONS[Role.ADMIN]
+    assert not [r for r, perms in PERMISSIONS.items() if r is not Role.ADMIN and Perm.EVENTS_READ_ALL in perms]
+    text = (ROOT / "docs" / "security" / "logging-audit.md").read_text(encoding="utf-8")
+    assert "Audit information (T349)" in text

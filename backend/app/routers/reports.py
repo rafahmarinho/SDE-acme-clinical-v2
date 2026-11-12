@@ -3,7 +3,11 @@
 * `/ward-activity` - counts/durations per ward (physician, admin).
 * `/audit` - audit log reduction summary (admin only, `events:read_all`), read-only (T437).
 * `/export.csv?kind=` - CSV export of an allow-listed report kind via a private temp file that is
-  deleted after the response is sent (T157). Formula injection is neutralised.
+  deleted after the response is sent (T157). Formula injection is neutralised; ward counts below the
+  small-cell threshold are suppressed exactly as in the JSON report (T544).
+* `/research-extract` - de-identified vital-sign extract for secondary use (T377): administrators with
+  settings:manage only, Safe Harbor field removal, per-extract keyed subject codes, time offsets instead of
+  timestamps, small wards suppressed; audited with row counts only.
 Every report generation/export is itself audited (T45).
 """
 
@@ -43,6 +47,16 @@ class AuditSummaryOut(Out):
     chain_intact: bool
     chain_first_broken_id: int | None
     generated_at: datetime
+    restricted_subjects_excluded: int = 0
+
+
+class ResearchExtractOut(Out):
+    format: Literal["acme-clinical-deidentified-vitals/v1"] = "acme-clinical-deidentified-vitals/v1"
+    method: Literal["safe-harbor"] = "safe-harbor"
+    period_days: int
+    min_subjects_per_ward: int
+    columns: list[str]
+    rows: list[dict]
 
 
 def _window(hours: int) -> tuple[datetime, datetime]:
@@ -105,7 +119,9 @@ async def export_csv(kind: reports.ReportKind, request: Request,
         else:
             data = await reports.ward_activity(conn, str(ward_id) if ward_id else None, start, end)
             columns = ("alarm_type", "count")
-            rows = [{"alarm_type": t, "count": n} for t, n in data["alarm_counts"].items()]
+            # Same small-cell suppression as the JSON report: counts below MIN_CELL_SIZE are blank, never exact.
+            suppressed = privacy.suppress_small_counts(data["alarm_counts"])
+            rows = [{"alarm_type": t, "count": n} for t, n in suppressed.items()]
         path, cleanup = reports.build_csv_export(columns, rows)
         try:
             await record_event(principal, "report.exported", "report", kind.value,
@@ -115,3 +131,22 @@ async def export_csv(kind: reports.ReportKind, request: Request,
             raise
     return FileResponse(path, media_type="text/csv; charset=utf-8", filename=f"{kind.value}.csv",
                         background=BackgroundTask(cleanup))
+
+
+@router.get("/research-extract", response_model=ResearchExtractOut)
+async def research_extract(request: Request,
+                           principal: Annotated[Principal, Depends(require(Perm.REPORT_READ, Perm.SETTINGS_MANAGE))],
+                           days: Annotated[int, Query(ge=1, le=31)] = 7) -> ResearchExtractOut:
+    """De-identified vital signs for secondary use. Never contains names, pseudonyms, ids, beds, timestamps,
+    observation text, ECG traces or file references."""
+    end = datetime.now(UTC)
+    start = end - timedelta(days=days)
+    async with transaction(principal) as conn:
+        await enforce_shared_limit(conn, "reports", fetch_one)
+        rows = await reports.research_extract(conn, start, end, min_subjects=privacy.MIN_CELL_SIZE)
+        await record_event(principal, "report.research_extract", "report", "research_extract",
+                           details={"days": days, "rows": len(rows),
+                                    "subjects": len({r["subject"] for r in rows})},
+                           conn=conn, request_id=request.state.request_id)
+    return ResearchExtractOut(period_days=days, min_subjects_per_ward=privacy.MIN_CELL_SIZE,
+                              columns=list(reports.EXTRACT_COLUMNS), rows=rows)

@@ -51,4 +51,4 @@ claims = jwt.decode(token, key, algorithms=["HS256"], audience="authenticated",
 - [ ] `test_origin_ip_and_role_headers_are_not_authentication` passes.
 - [ ] Pytest: a reading for a monitor without a valid device secret is rejected before any database write.
 
-**Status:** Pending
+**Status:** Applied

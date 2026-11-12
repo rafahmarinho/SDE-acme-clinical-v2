@@ -52,4 +52,4 @@ app = FastAPI(docs_url="/docs" if settings.docs_enabled else None, redoc_url=Non
 - [ ] `pip-audit -r backend/requirements.txt --strict` and `pnpm audit --audit-level=moderate` are clean on the release commit.
 - [ ] `test_t370_component_register_documents_every_direct_dependency` passes, and no Dependabot security PR stays open longer than the agreed SLA.
 
-**Status:** Pending
+**Status:** Applied

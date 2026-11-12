@@ -54,4 +54,4 @@ on conflict (id) do update set public = false;
 - [ ] Pytest: signed URLs are issued only to authorized roles and expire (<= 60 s); a direct public Storage URL for an object returns 400/404.
 - [ ] Temporary files are gone after the CSV export response completes.
 
-**Status:** Pending
+**Status:** Applied

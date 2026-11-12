@@ -55,4 +55,4 @@ class InviteIn(BaseModel):
 - [ ] Pytest: invite with `"a@b.com\r\nBcc: x@evil.test"` returns 422.
 - [ ] Manual check (recorded in `docs/security/deployment.md`): a test e-mail passes SPF, DKIM and DMARC alignment.
 
-**Status:** Pending
+**Status:** Applied

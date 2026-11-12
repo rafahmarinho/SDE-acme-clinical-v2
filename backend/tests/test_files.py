@@ -88,6 +88,11 @@ def upload_env(monkeypatch, identities):
             stored.append(url)
             return FakeResp()
 
+        async def get(self, url, **kw):  # bucket privacy check (T214)
+            resp = FakeResp()
+            resp.json = lambda: {"id": "clinical-files", "public": False}
+            return resp
+
         async def request(self, method, url, **kw):
             stored.append(f"{method} {url}")
             return FakeResp()
@@ -515,3 +520,104 @@ def test_t295_storage_private_and_no_plaintext_secrets_in_schema_or_bundle():
     bundle_check = next(line for line in ci.splitlines() if "grep -rEi" in line and " dist" in line)
     for name in ("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_JWT_SECRET", "DATABASE_URL", "AUDIT_SIGNING_KEY"):
         assert name in bundle_check, name
+
+
+# --------------------------------------------------------------------------- T214 confidential files on the server
+def test_t214_bucket_is_private_and_browser_roles_have_no_storage_policies():
+    sql = "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "supabase" / "migrations").glob("*.sql")))
+    assert re.search(r"values \('clinical-files', 'clinical-files', false", sql)
+    assert "on conflict (id) do update set public = false" in sql
+    assert "on storage.objects" not in re.sub(r"--[^\n]*", "", sql)
+    from app.routers import files as files_router
+
+    assert files_router.SIGNED_URL_SECONDS <= 60
+
+
+def _bucket_client(body: dict, status: int = 200):
+    class Resp:
+        status_code = status
+
+        def json(self):
+            return body
+
+    class Client:
+        calls = 0
+
+        async def get(self, url, **kw):
+            Client.calls += 1
+            assert url == "/storage/v1/bucket/clinical-files"
+            return Resp()
+
+    return Client()
+
+
+def test_t214_public_or_unverifiable_bucket_fails_closed_and_alerts(monkeypatch):
+    from app.core.errors import DomainError
+    from app.routers import files as files_router
+
+    alerts: list[str] = []
+
+    async def notify(kind, details=None):
+        alerts.append(kind)
+
+    monkeypatch.setattr(files_router, "notify_admins", notify)
+    for body, status in (({"id": "clinical-files", "public": True}, 200), ({}, 503), ({"public": None}, 200)):
+        monkeypatch.setattr(files_router, "_bucket_verified_at", None)
+        with pytest.raises(DomainError) as exc:
+            run(files_router.ensure_bucket_private(_bucket_client(body, status)))
+        assert exc.value.status_code == 503 and exc.value.code == "storage_unavailable"
+    assert alerts == ["storage_bucket_not_private"] * 3
+
+
+def test_t214_private_bucket_check_is_cached(monkeypatch):
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(files_router, "_bucket_verified_at", None)
+    client = _bucket_client({"id": "clinical-files", "public": False})
+    run(files_router.ensure_bucket_private(client))
+    run(files_router.ensure_bucket_private(client))
+    assert type(client).calls == 1
+
+
+def test_t214_upload_checks_bucket_privacy_before_storing(upload_env, client, monkeypatch):
+    from app.core.errors import DomainError
+    from app.routers import files as files_router
+
+    async def public_bucket(c):
+        raise DomainError("File storage is temporarily unavailable.", 503, code="storage_unavailable")
+
+    monkeypatch.setattr(files_router, "ensure_bucket_private", public_bucket)
+    r = _upload(client, upload_env, "nurse", "scan.png", tiny_png(), "image/png")
+    assert r.status_code == 503 and r.json()["code"] == "storage_unavailable"
+    assert not [s for s in upload_env["stored"] if "/storage/v1/object/clinical-files/" in s]  # nothing stored
+
+
+def test_t214_report_workspace_must_be_private_to_the_process(monkeypatch):
+    import os
+    import stat as stat_mod
+
+    monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
+
+    def st(mode: int, uid: int = 1000):
+        return os.stat_result((mode, 0, 0, 1, uid, 0, 0, 0, 0, 0))
+
+    reports.check_private_dir(st(stat_mod.S_IFDIR | 0o700), posix=True)                # private: accepted
+    for bad in (st(stat_mod.S_IFDIR | 0o777), st(stat_mod.S_IFDIR | 0o750), st(stat_mod.S_IFDIR | 0o700, uid=0),
+                st(stat_mod.S_IFLNK | 0o777), st(stat_mod.S_IFREG | 0o600)):
+        with pytest.raises(PermissionError):
+            reports.check_private_dir(bad, posix=True)
+
+
+def test_t214_report_files_are_created_0600_and_removed_after_streaming(isolated_tmp):
+    import os
+    import stat as stat_mod
+
+    path, cleanup = reports.build_csv_export(("kind", "count"), [{"kind": "x", "count": 1}])
+    try:
+        if os.name == "posix":
+            assert stat_mod.S_IMODE(os.stat(path).st_mode) == 0o600
+            assert stat_mod.S_IMODE(os.stat(os.path.dirname(path)).st_mode) == 0o700
+        assert os.path.exists(path)
+    finally:
+        cleanup()
+    assert not os.path.exists(path) and not os.path.exists(os.path.dirname(path))

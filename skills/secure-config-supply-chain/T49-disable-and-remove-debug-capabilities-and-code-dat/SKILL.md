@@ -56,4 +56,4 @@ export default defineConfig({ build: { sourcemap: false }, esbuild: { drop: ["co
 - [ ] A frontend build test asserts `dist/` contains no `*.map` files and no `console.log` calls.
 - [ ] `curl -I` against the production API shows no `Server`/`X-Powered-By` version details and `/docs` returns 404.
 
-**Status:** Pending
+**Status:** Applied

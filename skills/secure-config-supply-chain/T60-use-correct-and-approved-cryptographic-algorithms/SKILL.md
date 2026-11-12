@@ -48,4 +48,4 @@ jwt.decode(token, key, algorithms=["HS256"], options={"require": ["exp", "sub"]}
 - [ ] `backend/tests/test_logging_audit.py::test_t485_records_are_signed_with_ecdsa_p521_sha512_and_verify` passes.
 - [ ] Pytest: the derived audit and config keys differ from each other and from the JWT secret.
 
-**Status:** Pending
+**Status:** Applied

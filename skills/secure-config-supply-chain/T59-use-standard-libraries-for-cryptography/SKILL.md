@@ -51,4 +51,4 @@ claims = jwt.decode(token, key, algorithms=["HS256"], audience=settings.supabase
 - [ ] `backend/tests/test_authentication.py::test_no_hand_rolled_password_hashing_or_auth_rows` passes.
 - [ ] `frontend/package.json` contains no third-party crypto library (checked by a test).
 
-**Status:** Pending
+**Status:** Applied

@@ -100,12 +100,20 @@ interface RequestOptions {
   stepUpRetried?: boolean;
 }
 
-function apiBaseUrl(): string {
-  const raw = import.meta.env.VITE_API_BASE_URL;
+/**
+ * The API origin. Outside development it must be https:// (T21): bearer tokens and patient data are never sent
+ * over plain HTTP, and a misconfigured build fails fast instead of silently downgrading.
+ */
+export function apiBaseUrl(env: { VITE_API_BASE_URL?: unknown; DEV?: boolean } = import.meta.env): string {
+  const raw = env.VITE_API_BASE_URL;
   if (typeof raw !== "string" || raw.trim() === "") {
     throw new Error("Missing required environment variable VITE_API_BASE_URL.");
   }
-  return raw.trim().replace(/\/+$/, "");
+  const base = raw.trim().replace(/\/+$/, "");
+  if (!env.DEV && !base.startsWith("https://")) {
+    throw new Error("VITE_API_BASE_URL must use https.");
+  }
+  return base;
 }
 
 // Query strings end up in browser history, proxy and server logs: never put credentials or personal data there.

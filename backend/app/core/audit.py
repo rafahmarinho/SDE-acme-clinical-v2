@@ -50,6 +50,9 @@ BUFFER_MAX = 500
 _buffer: collections.deque[tuple[Any, str, tuple]] = collections.deque(maxlen=BUFFER_MAX)
 _last_alert: dict[str, float] = {}
 ALERT_MIN_INTERVAL_SECONDS = 60
+# The only keys an administrator alert may carry: identifiers and counters, never personal or clinical content.
+ALERT_DETAIL_KEYS = frozenset({"action", "activity", "attachment_id", "client_ip", "entity_id", "monitor_id",
+                               "patient_id", "per_minute", "status", "user_id"})
 
 INSERT_SQL = (
     "insert into public.events (actor_id, actor_role, action, entity_type, entity_id, outcome, request_id, details,"
@@ -126,11 +129,18 @@ def _params(r: dict[str, Any]) -> tuple:
             r["key_id"], r["signature"])
 
 
+def alert_details(details: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep only allow-listed identifier keys in an admin alert (T1386): alerts may be forwarded to e-mail or
+    chat later, so patient names, MRNs, vitals or free text never travel in them - only ids and a link."""
+    return {k: v for k, v in (details or {}).items() if k in ALERT_DETAIL_KEYS}
+
+
 async def notify_admins(kind: str, details: dict[str, Any] | None = None) -> None:
     """Alert administrators: critical security log line (log-drain alerting) plus a `system_alerts` row
     (shown on the admin events screen). Rate-limited per kind; never raises."""
     now = time.monotonic()
-    security_log.critical("admin_alert", extra={"alert": kind, "details": redact(details or {})})
+    details = alert_details(details)
+    security_log.critical("admin_alert", extra={"alert": kind, "details": redact(details)})
     if now - _last_alert.get(kind, -1e9) < ALERT_MIN_INTERVAL_SECONDS:
         return
     _last_alert[kind] = now

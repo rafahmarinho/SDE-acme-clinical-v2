@@ -54,4 +54,4 @@ rows = await fetch_all(conn, """select ward_code, day, alarm_type, priority, ala
 - [ ] Pytest: a ward/day with 3 alarms of a type is absent from `reporting.ward_alarm_daily` (or `null` via `suppress_small_counts`), never reported as 3.
 - [ ] Pytest: the CSV export contains no column named like `name`, `pseudonym`, `birth`, `bed` or `email`.
 
-**Status:** Pending
+**Status:** Applied

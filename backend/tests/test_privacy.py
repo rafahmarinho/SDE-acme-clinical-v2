@@ -572,3 +572,452 @@ def test_t314_phi_and_pii_tables_have_rls():
     for table in _personal_tables():
         assert (f"'{table}'" in ALL_SQL and "force row level security" in ALL_SQL) or \
             f"alter table public.{table} force row level security" in ALL_SQL, table
+
+
+# =========================================================================== T178 / T604 consent and withdrawal
+CONSENT_SQL = re.sub(r"--[^\n]*", "", (ROOT / "supabase" / "migrations" / "0013_consent_and_restriction.sql")
+                     .read_text(encoding="utf-8"))
+
+
+class ConsentDB(DB):
+    """DB fake with a tiny in-memory consent_grants table (the SQL itself is checked statically below)."""
+
+    def __init__(self):
+        super().__init__()
+        self.grants: list[dict] = []
+
+    def _active(self, purpose: str) -> dict | None:
+        return next((g for g in self.grants if g["purpose"] == purpose and g["withdrawn_at"] is None), None)
+
+    async def fetch_one(self, conn, sql, params=()):
+        self.calls.append(("one", sql, params))
+        if "has_active_consent" in sql:
+            return {"ok": self._active(params[1]) is not None}
+        if "from public.consent_grants where user_id = %s and purpose = %s and withdrawn_at is null" in sql:
+            return self._active(params[1])
+        if "insert into public.consent_grants" in sql:
+            row = {"id": uuid.uuid4(), "purpose": params[1], "notice_version": params[2], "language": params[3],
+                   "request_id": params[4], "granted_at": "2026-11-12T10:00:00Z", "withdrawn_at": None}
+            self.grants.append(row)
+            return row
+        if "update public.consent_grants set withdrawn_at" in sql:
+            row = self._active(params[2])
+            if row:
+                row["withdrawn_at"] = "2026-11-12T11:00:00Z"
+                return {"id": row["id"]}
+            return None
+        return self._match(sql)
+
+    async def fetch_all(self, conn, sql, params=()):
+        self.calls.append(("all", sql, params))
+        if "from public.consent_grants where user_id" in sql:
+            return [dict(g) for g in self.grants]
+        return list(self._match(sql) or [])
+
+
+@pytest.fixture
+def cdb(monkeypatch):
+    from app.services import consent
+
+    fake = ConsentDB()
+    for module in (profile_router, consent):
+        for attr in ("transaction", "fetch_all", "fetch_one"):
+            if hasattr(module, attr):
+                monkeypatch.setattr(module, attr, getattr(fake, attr))
+    monkeypatch.setattr("app.db.transaction", fake.transaction)
+    alerts: list[tuple] = []
+
+    async def notify(kind, details=None):
+        alerts.append((kind, details))
+
+    monkeypatch.setattr(profile_router, "notify_admins", notify)
+    fake.alerts = alerts  # type: ignore[attr-defined]
+    return fake
+
+
+PHONE = {"escalation_phone": "+5511912345678"}
+GRANT = {"purpose": "escalation_contact", "notice_version": privacy.PRIVACY_NOTICE_VERSION}
+
+
+def test_t178_optional_field_refused_without_grant_then_accepted(client, identities, cdb, audited):
+    _, h = headers_for(identities, "nurse")
+    r = client.put("/v1/me/escalation-contact", json=PHONE, headers=h)
+    assert r.status_code == 409 and r.json()["code"] == "consent_required"
+    assert not [s for s in cdb.statements("execute") if "staff_optional_contacts" in s]   # nothing collected
+    assert client.post("/v1/me/consents", json=GRANT, headers=h).status_code == 201
+    r = client.put("/v1/me/escalation-contact", json=PHONE, headers=h)
+    assert r.status_code == 200 and r.json() == PHONE
+    assert [s for s in cdb.statements("execute") if "insert into public.staff_optional_contacts" in s]
+    assert client.put("/v1/me/escalation-contact", json={"escalation_phone": "call me"}, headers=h).status_code == 422
+
+
+def test_t178_grant_stores_purpose_version_language_time_and_request_id_and_is_audited(client, identities, cdb, audited):
+    _, h = headers_for(identities, "nurse")
+    r = client.post("/v1/me/consents", json=GRANT, headers={**h, "X-Request-Id": "req-consent-0001"})
+    assert r.status_code == 201
+    grant = cdb.grants[0]
+    assert (grant["purpose"], grant["notice_version"], grant["language"], grant["request_id"]) == \
+        ("escalation_contact", privacy.PRIVACY_NOTICE_VERSION, "en", "req-consent-0001")
+    assert grant["granted_at"]
+    assert ("consent.granted", "success", {"purpose": "escalation_contact",
+                                           "notice_version": privacy.PRIVACY_NOTICE_VERSION, "language": "en"}) in audited
+    purpose = r.json()["purposes"][0]
+    assert purpose["active"] is True and purpose["required"] is False
+    for field in ("data_categories", "retention", "third_parties", "withdrawal", "description"):
+        assert purpose[field], field
+
+
+def test_t178_consent_needs_the_current_notice_and_a_known_purpose(client, identities, cdb):
+    _, h = headers_for(identities, "nurse")
+    assert client.post("/v1/me/consents", json={**GRANT, "notice_version": "2020-01-01"}, headers=h).status_code == 409
+    assert client.post("/v1/me/consents", json={**GRANT, "purpose": "marketing"}, headers=h).status_code == 422
+    listed = client.get("/v1/me/consents", headers=h).json()
+    assert all(p["active"] is False for p in listed["purposes"])   # off by default
+
+
+def test_t178_rls_keeps_consent_grants_private_and_gates_optional_data():
+    flat = re.sub(r"\s+", " ", CONSENT_SQL)
+    assert "create policy consent_grants_read on public.consent_grants for select to acme_api_rw " \
+           "using (user_id = public.current_staff_id())" in flat
+    assert "with check (user_id = public.current_staff_id() and withdrawn_at is null)" in flat
+    assert "alter table public.consent_grants force row level security" in flat
+    insert = flat.split("create policy optional_contacts_insert", 1)[1].split(";", 1)[0]
+    assert "public.has_active_consent(user_id, 'escalation_contact')" in insert
+    assert "grant select, insert on public.consent_grants to acme_api_rw" in flat
+    assert not re.search(r"grant [^;]*(delete)[^;]* on public\.consent_grants", flat)   # evidence is never deleted
+
+
+def test_t604_withdrawal_keeps_evidence_stops_processing_and_is_audited(client, identities, cdb, audited):
+    from app.services import consent
+
+    _, h = headers_for(identities, "nurse")
+    client.post("/v1/me/consents", json=GRANT, headers=h)
+    client.put("/v1/me/escalation-contact", json=PHONE, headers=h)
+    r = client.delete("/v1/me/consents", params={"purpose": "escalation_contact"}, headers=h)
+    assert r.status_code == 200 and r.json()["purposes"][0]["active"] is False
+    assert len(cdb.grants) == 1 and cdb.grants[0]["withdrawn_at"]               # row kept, withdrawn_at set
+    executed = cdb.statements("execute")
+    assert "delete from public.staff_optional_contacts where user_id = %s" in executed  # dependent data deleted
+    assert ("consent.withdrawn", "success", {"purpose": "escalation_contact"}) in audited
+    # time-of-use check: the dependent feature is skipped once consent is gone
+    before = len(cdb.calls)
+    assert client.get("/v1/me/escalation-contact", headers=h).json() == {"escalation_phone": None}
+    assert not [c for c in cdb.calls[before:] if "from public.staff_optional_contacts" in c[1]]
+    assert client.put("/v1/me/escalation-contact", json=PHONE, headers=h).status_code == 409
+    assert consent.STOP_PROCESSING["escalation_contact"]
+
+
+def test_t604_withdrawal_scoped_to_the_caller_and_validated(client, identities, cdb):
+    _, h = headers_for(identities, "nurse")
+    assert client.delete("/v1/me/consents", params={"purpose": "escalation_contact"}, headers=h).status_code == 404
+    assert client.delete("/v1/me/consents", params={"purpose": "other"}, headers=h).status_code == 422
+    flat = re.sub(r"\s+", " ", CONSENT_SQL)
+    withdraw = flat.split("create policy consent_grants_withdraw", 1)[1].split(";", 1)[0]
+    assert "using (user_id = public.current_staff_id() and withdrawn_at is null)" in withdraw  # never another user's
+    uid = str(next(iter(k for k in identities if k != "__events__")))
+    for _, sql, params in cdb.calls:  # every consent statement is bound to the caller's own id
+        if "consent_grants" in sql and params:
+            assert uid in [str(p) for p in params], sql
+
+
+def test_t604_export_includes_consent_history_and_erasure_closes_grants():
+    fields = profile_router.PersonalDataExport.model_fields
+    assert {"consents", "optional_data", "processing_restrictions"} <= fields.keys()
+    src = (ROOT / "backend" / "app" / "routers" / "profile.py").read_text(encoding="utf-8")
+    build = src.split("async def _build_export", 1)[1].split("\nasync def ", 1)[0]
+    assert "from public.consent_grants" in build and "from public.staff_optional_contacts" in build
+    trigger = re.sub(r"\s+", " ", CONSENT_SQL).split("create or replace function public.privacy_on_staff_erased()", 1)[1]
+    assert "delete from public.staff_optional_contacts where user_id = new.user_id" in trigger
+    assert "update public.consent_grants set withdrawn_at = now()" in trigger
+    assert "after update of erased_at on public.staff_profiles" in re.sub(r"\s+", " ", CONSENT_SQL)
+
+
+# =========================================================================== T754 restriction of processing
+@pytest.fixture
+def staff_db(monkeypatch):
+    from app.routers import staff as staff_router
+
+    fake = DB()
+    for attr in ("transaction", "fetch_all", "fetch_one"):
+        monkeypatch.setattr(staff_router, attr, getattr(fake, attr))
+    events: list[tuple] = []
+
+    async def record(principal, action, entity_type, entity_id=None, **kw):
+        events.append((action, entity_id, kw.get("details") or {}))
+
+    monkeypatch.setattr(staff_router, "record_event", record)
+    fake.events = events  # type: ignore[attr-defined]
+    return fake
+
+
+RESTRICTION_ROW = {"id": uuid.uuid4(), "activity": "staff_activity_report", "basis": "objection",
+                   "created_by": uuid.uuid4(), "created_at": "2026-11-12T10:00:00Z", "lifted_by": None, "lifted_at": None}
+
+
+@pytest.mark.parametrize("role", ["nurse", "physician", "biomed_tech"])
+def test_t754_only_administrators_create_or_lift_restrictions(client, identities, staff_db, role):
+    target = str(uuid.uuid4())
+    _, h = headers_for(identities, role)
+    body = {"activity": "staff_activity_report", "basis": "objection"}
+    assert client.post(f"/v1/staff/{target}/processing-restrictions", json=body, headers=h).status_code == 403
+    assert client.delete(f"/v1/staff/{target}/processing-restrictions", params={"activity": "statistics"},
+                         headers=h).status_code == 403
+    assert client.get(f"/v1/staff/{target}/processing-restrictions", headers=h).status_code == 403
+    assert staff_db.calls == []
+
+
+def test_t754_restriction_and_lift_are_audited(client, identities, staff_db):
+    target = str(uuid.uuid4())
+    _, h = headers_for(identities, "admin")
+    staff_db.handlers = {"select 1 from public.staff_profiles": {"?column?": 1},
+                         "insert into public.processing_restrictions": RESTRICTION_ROW,
+                         "update public.processing_restrictions": {"id": RESTRICTION_ROW["id"]}}
+    r = client.post(f"/v1/staff/{target}/processing-restrictions",
+                    json={"activity": "staff_activity_report", "basis": "objection"}, headers=h)
+    assert r.status_code == 201, r.text
+    r = client.delete(f"/v1/staff/{target}/processing-restrictions", params={"activity": "staff_activity_report"},
+                      headers=h)
+    assert r.status_code == 204
+    assert ("privacy.processing_restricted", target, {"activity": "staff_activity_report", "basis": "objection"}) \
+        in staff_db.events
+    assert ("privacy.restriction_lifted", target, {"activity": "staff_activity_report"}) in staff_db.events
+    assert client.post(f"/v1/staff/{target}/processing-restrictions", json={"activity": "patient_care",
+                                                                          "basis": "objection"}, headers=h).status_code == 422
+
+
+def test_t754_reports_and_views_skip_restricted_subjects_but_clinical_paths_do_not():
+    from app.services import reports
+
+    src = (ROOT / "backend" / "app" / "services" / "reports.py").read_text(encoding="utf-8")
+    audit_rows = src.split("async def audit_rows", 1)[1].split("\nasync def ", 1)[0]
+    assert "public.processing_allowed('staff', actor_id, 'staff_activity_report')" in audit_rows  # report + CSV
+    ward = src.split("async def ward_activity", 1)[1].split("\nasync def ", 1)[0]
+    assert "public.processing_allowed('patient', p.id, 'statistics')" in ward
+    extract = src.split("async def research_extract", 1)[1]
+    assert "public.processing_allowed('patient', p.id, 'research_extract')" in extract
+    flat = re.sub(r"\s+", " ", CONSENT_SQL)
+    for view in ("reporting.ward_alarm_daily", "reporting.ward_vitals_daily"):
+        body = flat.split(f"create or replace view {view} as", 1)[1].split(";", 1)[0]
+        assert "r.activity = 'statistics'" in body or "pr.activity = 'statistics'" in body, view
+    assert "lifted_at is null" in flat.split("create or replace function public.processing_allowed", 1)[1]
+    # clinical care and the audit trail itself are never restricted
+    for name in ("patients.py", "alarms.py", "observations.py", "events.py", "break_glass.py"):
+        assert "processing_allowed" not in (ROOT / "backend" / "app" / "routers" / name).read_text(encoding="utf-8")
+    assert "processing_allowed" not in src.split("def summarize_audit", 1)[1].split("\nasync def audit_summary", 1)[0]
+    assert reports.AUDIT_COLUMNS  # the export uses audit_rows, so the same filter applies
+
+
+def test_t754_audit_report_says_how_many_subjects_were_excluded(client, identities, monkeypatch):
+    from app.routers import reports as rep_router
+    from app.services import reports
+
+    async def fake_all(conn, sql, params=()):
+        return []
+
+    async def fake_one(conn, sql, params=()):
+        if "processing_restrictions" in sql:
+            return {"n": 2}
+        if "verify_event_chain" in sql:
+            return {"broken_at": None}
+        return {"retry_after": 0}
+
+    async def record(*a, **k):
+        return None
+
+    @asynccontextmanager
+    async def tx(principal, read_only=False):
+        yield Conn(DB())
+
+    monkeypatch.setattr(reports, "fetch_all", fake_all)
+    monkeypatch.setattr(reports, "fetch_one", fake_one)
+    monkeypatch.setattr(rep_router, "fetch_one", fake_one)
+    monkeypatch.setattr(rep_router, "transaction", tx)
+    monkeypatch.setattr(rep_router, "record_event", record)
+    _, h = headers_for(identities, "admin")
+    r = client.get("/v1/reports/audit", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["restricted_subjects_excluded"] == 2
+
+
+def test_t754_staff_can_see_and_request_restrictions(client, identities, cdb, audited):
+    _, h = headers_for(identities, "nurse")
+    assert client.get("/v1/me/processing-restrictions", headers=h).json() == {"items": [], "next_offset": None}
+    r = client.post("/v1/me/processing-restrictions/request", json={"activity": "statistics"}, headers=h)
+    assert r.status_code == 202
+    assert ("privacy.restriction_requested", "success", {"activity": "statistics"}) in audited
+    assert cdb.alerts and cdb.alerts[0][0] == "processing_restriction_requested"
+
+
+# =========================================================================== T742 accuracy (duplicates)
+def test_t742_duplicate_active_patients_and_occupied_beds_are_refused():
+    flat = re.sub(r"\s+", " ", CONSENT_SQL)
+    assert "create unique index if not exists patients_one_active_identity on public.patients " \
+           "(lower(display_name), birth_year, ward_id) where discharged_at is null" in flat
+    assert re.search(r"bed_id uuid unique references public\.beds", ALL_SQL)       # one patient per bed
+    assert "monitor_assignments_active_bed" in ALL_SQL                             # one monitor per bed
+
+
+def test_t742_unique_violation_is_a_generic_409(identities):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from psycopg import errors as pg_errors
+
+    from app.core.errors import install_error_handlers
+
+    app = FastAPI()
+    install_error_handlers(app)
+
+    @app.get("/dup")
+    async def dup():
+        raise pg_errors.UniqueViolation('duplicate key value violates unique constraint "patients_one_active_identity"')
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        r = c.get("/dup")
+    assert r.status_code == 409 and r.json()["code"] == "conflict"
+    assert "patients_one_active_identity" not in r.text and "duplicate key" not in r.text
+
+
+# =========================================================================== T744 pseudonymised data
+def test_t744_pseudonyms_are_not_derived_from_identity_and_mapping_stays_protected():
+    seed = (ROOT / "supabase" / "seed.sql").read_text(encoding="utf-8")
+    codes = re.findall(r"\('(PT-\d{4})', '([^']+)'", seed)
+    assert len(codes) == 12 and [c for c, _ in codes] == [f"PT-{i:04d}" for i in range(1, 13)]  # assigned, not hashed
+    assert "pseudonym ~ '^PT-[0-9]{4}$'" in ALL_SQL
+    grants = [re.sub(r"\s+", " ", s) for s in ALL_SQL.lower().split(";") if s.strip().startswith("grant ")]
+    for g in grants:
+        if " on public.patients" in g or "public.patients," in g:
+            assert not re.search(r"\bto (.*\b)?(anon|authenticated|acme_reporting)\b", g.split(" to ", 1)[1]), g
+    assert "alter table public.patients force row level security" in ALL_SQL.lower() or "'patients'" in ALL_SQL
+
+
+def test_t744_secondary_outputs_carry_no_names_or_pseudonyms():
+    from app.services import reports
+
+    assert not {"display_name", "pseudonym", "full_name", "email"} & set(reports.AUDIT_COLUMNS)
+    assert not {"display_name", "pseudonym", "birth_year", "bed_label"} & set(reports.EXTRACT_COLUMNS)
+    from app.core.audit import ALERT_DETAIL_KEYS
+
+    assert not {"display_name", "pseudonym", "full_name", "email", "mrn", "name"} & ALERT_DETAIL_KEYS
+
+
+# =========================================================================== T544 / T377 secondary use
+def test_t544_csv_export_suppresses_small_counts(client, identities, monkeypatch, tmp_path):
+    from app.routers import reports as rep_router
+    from app.services import reports
+
+    captured: dict = {}
+    real_build = reports.build_csv_export
+
+    def build(columns, rows, writer=None):
+        captured["columns"], captured["rows"] = list(columns), list(rows)
+        return real_build(columns, captured["rows"])
+
+    async def fake_activity(conn, ward_id, start, end):
+        return {"ward_id": None, "period_start": start, "period_end": end, "alarm_counts": {"low_spo2": 3, "tachycardia": 7},
+                "mean_time_to_ack_seconds": None, "unacknowledged_high_priority": 0, "readings_count": 0,
+                "generated_at": end}
+
+    async def one(conn, sql, params=()):
+        return {"retry_after": 0}
+
+    async def record(*a, **k):
+        return None
+
+    @asynccontextmanager
+    async def tx(principal, read_only=False):
+        yield Conn(DB())
+
+    monkeypatch.setattr(reports, "TMP_ROOT", tmp_path / "acme-reports")
+    monkeypatch.setattr(rep_router.reports, "build_csv_export", build)
+    monkeypatch.setattr(rep_router.reports, "ward_activity", fake_activity)
+    monkeypatch.setattr(rep_router, "fetch_one", one)
+    monkeypatch.setattr(rep_router, "transaction", tx)
+    monkeypatch.setattr(rep_router, "record_event", record)
+    _, h = headers_for(identities, "physician")
+    r = client.get("/v1/reports/export.csv", params={"kind": "ward_activity"}, headers=h)
+    assert r.status_code == 200, r.text
+    lines = r.text.strip().splitlines()
+    assert "low_spo2," in lines and "tachycardia,7" in lines and "low_spo2,3" not in lines  # 3 is never reported
+    for col in captured["columns"]:
+        assert not re.search(r"name|pseudonym|birth|bed|email", col), col
+
+
+def _reading(pid, ward, minute, hr=80):
+    from datetime import UTC, datetime, timedelta
+
+    return {"patient_id": pid, "ward_code": ward, "recorded_at": datetime(2026, 11, 12, 8, tzinfo=UTC) + timedelta(minutes=minute),
+            "heart_rate": hr, "spo2": 97, "resp_rate": 16, "bp_systolic": 120, "bp_diastolic": 80, "quality": "good",
+            "display_name": "Alex Morgan (fictitious)", "pseudonym": "PT-0001", "birth_year": 1956, "ecg": [0.1, 0.2],
+            "bed_label": "A01", "object_path": "patients/x/y.pdf", "body": "free text"}
+
+
+def test_t377_deidentified_extract_drops_phi_and_uses_per_extract_codes():
+    from datetime import datetime
+
+    from app.services import reports
+
+    big = [str(uuid.uuid4()) for _ in range(5)]
+    small = [str(uuid.uuid4()) for _ in range(2)]
+    rows = [_reading(p, "A", m) for p in big for m in (0, 5)] + [_reading(p, "B", 0) for p in small]
+    one = reports.deidentify_readings(rows, key=b"k1" * 16, min_subjects=5)
+    two = reports.deidentify_readings(rows, key=b"k2" * 16, min_subjects=5)
+    assert len(one) == 10                                               # ward B (2 patients) suppressed
+    for row in one:
+        assert set(row) == set(reports.EXTRACT_COLUMNS)
+        assert not set(row) & reports.PHI_DROP
+        assert not any(isinstance(v, datetime) for v in row.values())  # offsets, no timestamps
+        blob = json.dumps(row)
+        assert "PT-0001" not in blob and "Alex" not in blob and "patients/" not in blob and "free text" not in blob
+    assert {r["offset_seconds"] for r in one} == {0, 300}
+    assert {r["subject"] for r in one}.isdisjoint({r["subject"] for r in two})  # different codes per extract
+    assert not {r["subject"] for r in one} & set(big)
+
+
+def test_t377_extract_endpoint_is_admin_only_and_audited_with_counts(client, identities, monkeypatch):
+    from app.routers import reports as rep_router
+
+    audited: list[tuple] = []
+
+    async def fake_extract(conn, start, end, *, min_subjects):
+        return [{"subject": "S-1", "ward_code": "A", "offset_seconds": 0, "heart_rate": 80, "spo2": 97, "resp_rate": 16,
+                 "bp_systolic": 120, "bp_diastolic": 80, "quality": "good"}]
+
+    async def one(conn, sql, params=()):
+        return {"retry_after": 0}
+
+    async def record(principal, action, entity_type, entity_id=None, **kw):
+        audited.append((action, kw.get("details")))
+
+    @asynccontextmanager
+    async def tx(principal, read_only=False):
+        yield Conn(DB())
+
+    monkeypatch.setattr(rep_router.reports, "research_extract", fake_extract)
+    monkeypatch.setattr(rep_router, "fetch_one", one)
+    monkeypatch.setattr(rep_router, "transaction", tx)
+    monkeypatch.setattr(rep_router, "record_event", record)
+    for role in ("nurse", "physician", "biomed_tech"):
+        _, h = headers_for(identities, role)
+        assert client.get("/v1/reports/research-extract", headers=h).status_code == 403
+    _, h = headers_for(identities, "admin")
+    r = client.get("/v1/reports/research-extract", params={"days": 7}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["method"] == "safe-harbor" and r.json()["min_subjects_per_ward"] == privacy.MIN_CELL_SIZE
+    assert audited == [("report.research_extract", {"days": 7, "rows": 1, "subjects": 1})]  # counts only
+
+
+def test_t377_extract_query_never_selects_text_files_or_ecg():
+    src = (ROOT / "backend" / "app" / "services" / "reports.py").read_text(encoding="utf-8")
+    query = src.split("async def research_extract", 1)[1]
+    select = query.split("rows = await fetch_all(conn, \"\"\"", 1)[1].split("from public.readings", 1)[0]
+    for forbidden in ("display_name", "pseudonym", "birth_year", "ecg", "body", "object_path", "attachments",
+                      "observations", "bed"):
+        assert forbidden not in select, forbidden
+
+
+def test_t178_consent_purpose_type_matches_the_catalogue():
+    from typing import get_args
+
+    from app.services import consent
+
+    assert set(get_args(profile_router.ConsentPurpose)) == set(consent.CONSENT_PURPOSES)

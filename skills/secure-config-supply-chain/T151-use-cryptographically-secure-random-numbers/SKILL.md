@@ -52,4 +52,4 @@ const nonce = crypto.getRandomValues(new Uint8Array(16));
 - [ ] A static test greps `frontend/src` for `Math.random` and fails outside test files.
 - [ ] Pytest: 1,000 generated device secrets / object paths are unique and have the expected length (>= 128 bits of entropy).
 
-**Status:** Pending
+**Status:** Applied

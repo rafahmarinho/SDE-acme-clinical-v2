@@ -140,6 +140,14 @@ jobs:
         run: |
           supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase db push
+      - name: Auth configuration as code (templates, OTP expiry, SMTP; T2/T1386/T2157)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_SMTP_HOST: ${{ secrets.SUPABASE_SMTP_HOST }}
+          SUPABASE_SMTP_USER: ${{ secrets.SUPABASE_SMTP_USER }}
+          SUPABASE_SMTP_PASS: ${{ secrets.SUPABASE_SMTP_PASS }}
+          SUPABASE_SMTP_ADMIN_EMAIL: ${{ secrets.SUPABASE_SMTP_ADMIN_EMAIL }}
+        run: supabase --yes config push --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
       - name: API and web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

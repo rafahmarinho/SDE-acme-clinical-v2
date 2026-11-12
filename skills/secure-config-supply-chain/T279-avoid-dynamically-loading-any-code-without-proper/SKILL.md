@@ -50,4 +50,4 @@ const Simulation = lazy(() => import("./screens/Simulation"));   // static speci
 - [ ] `test_t305_csp_restricts_scripts_to_self` passes.
 - [ ] Pytest: `POST /v1/simulation/scenario` with `"scenario": "__import__('os')"` or an unknown name returns 422.
 
-**Status:** Pending
+**Status:** Applied

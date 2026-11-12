@@ -144,12 +144,25 @@ def generate_password(policy: PasswordPolicy, context: list[str] | None = None, 
 # ---------------------------------------------------------------------------
 # System (server-to-server) credentials - T230
 # ---------------------------------------------------------------------------
+def _mostly_sequential(value: str) -> bool:
+    """True when most neighbouring characters repeat or step by one ("abcdef...", "0123...", "aaaa...")."""
+    if len(value) < 2:
+        return True
+    steps = sum(1 for a, b in zip(value.lower(), value.lower()[1:]) if abs(ord(a) - ord(b)) <= 1)
+    return steps / (len(value) - 1) > 0.5
+
+
 def system_secret_problems(name: str, value: str, *, min_length: int = 16) -> list[str]:
-    """Problems with a non-human credential (DB password, service key, shared secret)."""
+    """Problems with a non-human credential (DB password, service key, shared secret) (T69).
+
+    System accounts are held to at least the end-user policy: the floor is never below PLATFORM_MIN_LENGTH, and
+    placeholder, dictionary, low-entropy or sequential values are refused."""
     problems: list[str] = []
+    min_length = max(min_length, PLATFORM_MIN_LENGTH)
     if len(value) < min_length:
         problems.append(f"{name} must be at least {min_length} characters")
-    if value.lower() in WEAK_SYSTEM_SECRETS or value.startswith("<") or len(set(value)) < 8:
+    if (value.lower() in WEAK_SYSTEM_SECRETS or value.lower() in COMMON_PASSWORDS or value.startswith("<")
+            or len(set(value)) < 8 or _mostly_sequential(value)):
         problems.append(f"{name} is a placeholder or low-entropy value")
     return problems
 
@@ -160,6 +173,7 @@ def database_url_problems(database_url: str) -> list[str]:
     problems = system_secret_problems("Database password", parts.password or "")
     if (parts.username or "") in ("postgres", "supabase_admin", ""):
         problems.append("DATABASE_URL must use the dedicated acme_api role, not a superuser")
-    if "sslmode=verify-full" not in database_url and "sslmode=require" not in database_url:
-        problems.append("DATABASE_URL must enforce TLS (sslmode=verify-full)")
+    # verify-full only: "require" encrypts but does not authenticate the server (T558/T156).
+    if "sslmode=verify-full" not in database_url:
+        problems.append("DATABASE_URL must enforce TLS with certificate verification (sslmode=verify-full)")
     return problems

@@ -80,6 +80,13 @@ API through mitmproxy with its untrusted CA (`HTTPS_PROXY=...`); calls to Supaba
 and the database connection must refuse the proxy certificate. `test_secure_config.py::test_t175_rejects_bad_certificates`
 runs the badssl.com checks when `RUN_NETWORK_TESTS=1` (scheduled CI job).
 
+Verification failures fail closed (T156/T21): an outbound `httpx` transport error is answered with a generic 503
+(`dependency_unavailable`, `Retry-After`), and a certificate / chain / hostname failure is logged as the
+`tls_verification_failed` security event (`backend/app/core/errors.py`); there is no fallback to plaintext or
+`verify=False`. In production the API also refuses any request the edge reports as plain HTTP
+(`X-Forwarded-Proto` other than `https` -> 400), and HSTS is sent on every API response. The SPA refuses to build
+or start with a non-HTTPS `VITE_API_BASE_URL` / `VITE_SUPABASE_URL` outside development.
+
 ## 6. Dynamic code loading (T305)
 
 * Frontend: Vite bundles all code; `import()` is used only with static paths (route code-splitting, same-origin

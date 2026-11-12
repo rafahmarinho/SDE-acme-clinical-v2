@@ -19,4 +19,4 @@ description: Ensure ACME Clinical patient and staff data processed on Vercel and
 
 **Recommended Action:** Privacy officer with platform owner: (1) determine the jurisdictions of patients and staff and their localization rules; (2) create the production Supabase project in a compliant region (e.g. `sa-east-1` São Paulo for Brazil, an EU region for GDPR) - region cannot be changed later; (3) pin Vercel function regions for the API to the same area (`backend/vercel.json` `regions`, Vercel project Functions settings) and check where Vercel logs and log drains store data; (4) review sub-processors (e-mail/SMTP provider, SIEM, backup storage) for data location; (5) keep a register of any cross-border transfer with date, recipient, volume and sensitivity; (6) decide whether backups/replicas outside the region are permitted.
 
-**Status:** Documented
+**Status:** Applied

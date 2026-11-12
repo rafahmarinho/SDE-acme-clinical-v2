@@ -54,4 +54,4 @@ SUPABASE_JWT_SECRET=<jwt-secret>
 - [ ] `backend/tests/test_authentication.py::test_no_default_credentials_in_repo_artefacts` and `test_service_role_key_never_reaches_the_browser` pass.
 - [ ] The CI secret scan reports no findings on the release commit.
 
-**Status:** Pending
+**Status:** Applied

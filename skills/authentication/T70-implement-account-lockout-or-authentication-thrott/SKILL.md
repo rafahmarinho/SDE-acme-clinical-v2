@@ -54,4 +54,4 @@ async def verify_in_db(conn, monitor_id: UUID, presented: str | None) -> None:
 - [ ] Pytest: 5 bad secrets lock the monitor; the correct secret is refused while locked; the response is identical to a wrong-secret response.
 - [ ] Pytest: lockout produces an audit event and an admin alert; admin unlock is audited and admin-only.
 
-**Status:** Pending
+**Status:** Applied

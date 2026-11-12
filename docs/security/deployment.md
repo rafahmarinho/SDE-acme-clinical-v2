@@ -66,3 +66,79 @@ record here (they cannot be set from this repo):
 | _pending_ | Vercel Firewall rate-limit rule | | |
 | _pending_ | Vercel spend limit / usage alerts | | |
 | _pending_ | Supabase usage alerts | | |
+
+## Transactional e-mail and messaging (T1386, T2157)
+
+All e-mail is sent by Supabase Auth (invitations, recovery, e-mail change, re-authentication codes and the
+"password changed" / "e-mail changed" notifications); the API never builds MIME or SMTP headers and every address is
+validated (`EmailStr` + `canonical_email`, CR/LF rejected). Templates (`supabase/templates/*.html`) contain only a
+single-use link or code, the anti-phishing statement ("ACME Clinical never asks for your password") and a
+confidentiality disclaimer: no passwords, no patient data (tested). One recipient per message. Administrator alerts stay
+in-app (`public.system_alerts`) and carry identifiers only (`ALERT_DETAIL_KEYS` in `backend/app/core/audit.py`); a
+future e-mail/chat forwarder may send only the alert kind and a link.
+
+Operator checklist (hosted, cannot be done from this repo):
+
+- [ ] Choose a transactional provider that supports TLS, SPF, DKIM and DMARC; create SMTP credentials scoped to sending.
+- [ ] Set `SUPABASE_SMTP_HOST`, `SUPABASE_SMTP_USER`, `SUPABASE_SMTP_PASS`, `SUPABASE_SMTP_ADMIN_EMAIL` as CI
+      environment secrets (`production` environment) so `supabase config push` applies `[auth.email.smtp]`; or enter
+      them in Supabase → Authentication → SMTP Settings. Port 587 (STARTTLS); the provider must refuse plaintext AUTH.
+- [ ] DNS for the sending domain: SPF record listing the provider, DKIM keys published, DMARC `p=quarantine` (then
+      `reject`) with aggregate reports to the security mailbox.
+- [ ] Send a test invitation and verify SPF, DKIM and DMARC alignment pass (message headers); record below.
+- [ ] Staff training on phishing / not forwarding clinical data by e-mail, DLP rules and service-desk procedures are
+      organisational controls recorded in the ISMS, not in this repo.
+
+| Date | Check | Result | By |
+|---|---|---|---|
+| _pending_ | SPF / DKIM / DMARC alignment of a test e-mail | | |
+
+## Data location (T2170)
+
+The API functions are pinned to Vercel region `gru1` (São Paulo) in `backend/vercel.json`, matching a Supabase
+project in `sa-east-1`, so patient and staff data are processed in Brazil (LGPD). If the deployment serves another
+jurisdiction, change both together and record it here. Operator checklist:
+
+- [ ] Privacy officer: confirm the jurisdictions of patients and staff and their localisation rules (LGPD, GDPR, HIPAA...).
+- [ ] Create the production Supabase project in the matching region (cannot be changed later); record the region.
+- [ ] Vercel: confirm the function region of the API project and where logs / log drains are stored.
+- [ ] Review sub-processors (SMTP provider, SIEM, backup storage) for data location.
+- [ ] Keep a register of any cross-border transfer (date, recipient, volume, sensitivity) and decide whether
+      backups/replicas outside the region are permitted.
+
+| Date | Component | Region / location | Transfer outside region? | Approved by |
+|---|---|---|---|---|
+| _pending_ | Supabase project | | | |
+| _pending_ | Vercel API functions | gru1 (repo default) | | |
+| _pending_ | Vercel logs / drains, SMTP, SIEM | | | |
+
+## Request handling offloaded to the platform (T374)
+
+There is no self-managed web server. Vercel's edge terminates TLS, buffers complete requests before invoking a
+function and absorbs network-level DDoS; the API keeps body/header/URL limits and rate limits as defence in depth
+(`backend/app/core/middleware.py`). Per-request resources are bounded in `backend/vercel.json`
+(`maxDuration` 30 s, `memory` 1024 MB). Operator checklist:
+
+- [ ] Vercel Firewall on the API project: rate-limit rules on `/v1/auth/*`, `/v1/monitors/*/assignment`,
+      `/v1/files/*` uploads and `/v1/reports/*`, plus a general per-IP limit (see "Throttling and cost controls").
+- [ ] WAF custom rules: deny methods other than GET/POST/PUT/PATCH/DELETE/OPTIONS and paths outside `/v1/*`.
+- [ ] Attack Challenge Mode playbook documented for incidents.
+- [ ] Supabase API and Auth rate limits of the hosted project match `supabase/config.toml`.
+- [ ] Controlled load test after each change; record the result in the drill table above.
+
+## Endpoint behaviour monitoring and privileged processes (T4593, T4595)
+
+The application emits the signals (structured `acme.security` events, signed `public.events`, login history,
+lockouts, `public.system_alerts`, pgaudit statement logs); behavioural analytics and endpoint protection belong to the
+organisation's SOC and IT. Operator checklist:
+
+- [ ] Vercel log drains (both projects) and a Supabase log drain into the SIEM; periodic `public.events` export.
+- [ ] Baselines per role and ward (login hours, source networks, patients viewed per shift, CSV exports, research
+      extracts, break-glass use) with real-time alerts to the on-call channel.
+- [ ] Playbook: deactivate the account / revoke sessions through the admin API (`PATCH /v1/staff/{id}`), open a review.
+- [ ] EDR on clinical workstations with process telemetry to the SIEM; OS protections (LSASS PPL, WDAC, exploit
+      protection; SELinux/AppArmor on Linux).
+- [ ] File Vercel and Supabase SOC 2 / ISO 27001 reports (host hardening, process isolation); restrict Vercel team
+      owners and Supabase organisation owners, SSO + MFA required. The API never uses the `postgres` superuser
+      (enforced at connection time by `verify_least_privilege`).
+- [ ] Review detection rules quarterly.

@@ -11,6 +11,13 @@
   data; GET /v1/me/export is the same for a session authenticated within the step-up window.
 * Erasure (T179/T240): POST /v1/me/erasure-request (password re-entry) creates a request that another
   administrator completes from the security settings screen; clinical records stay, pseudonymised.
+* Consent for optional data (T178/T604): GET /v1/me/consents lists every optional purpose (with its data
+  categories, retention, third parties and how to withdraw) and the caller's grant history;
+  POST /v1/me/consents grants one purpose under the current notice version; DELETE /v1/me/consents?purpose=
+  withdraws it and stops the processing at once. Optional data (PUT /v1/me/escalation-contact) is refused
+  with 409 without an active grant.
+* Restriction of processing (T754): GET /v1/me/processing-restrictions shows restrictions on the caller's
+  data; POST /v1/me/processing-restrictions/request asks the administrators to restrict an activity.
 Every action is audited with identifiers only.
 """
 
@@ -18,15 +25,15 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
-from app.core.audit import record_event
+from app.core.audit import notify_admins, record_event
 from app.core.errors import DomainError
 from app.core.security import CurrentPrincipal, Principal, require, require_recent_auth
 from app.db import fetch_all, fetch_one, transaction
-from app.schemas import Me, ProfileUpdate, Strict
-from app.services import privacy
+from app.schemas import Me, Page, ProfileUpdate, Strict
+from app.services import consent, privacy
 
 router = APIRouter(prefix="/v1/me", tags=["profile"])
 
@@ -85,8 +92,59 @@ class PersonalDataExport(BaseModel):
     maintenance_performed: list[dict[str, Any]]
     files_uploaded: list[dict[str, Any]]
     emergency_access_grants: list[dict[str, Any]]
+    consents: list[dict[str, Any]] = []
+    optional_data: dict[str, Any] = {}
+    processing_restrictions: list[dict[str, Any]] = []
     audit_events: list[dict[str, Any]]
     processing: dict[str, Any]
+
+
+ConsentPurpose = Literal["escalation_contact"]  # keys of consent.CONSENT_PURPOSES (checked by tests)
+RestrictableActivity = Literal["staff_activity_report", "statistics", "research_extract"]
+
+
+class ConsentGrantIn(Strict):
+    purpose: Annotated[ConsentPurpose, Field(max_length=40)]
+    notice_version: NoticeVersion
+
+
+class ConsentPurposeOut(BaseModel):
+    purpose: str
+    title: str
+    description: str
+    data_categories: list[str]
+    retention: str
+    third_parties: list[str]
+    withdrawal: str
+    required: bool
+    active: bool
+    granted_at: datetime | None = None
+
+
+class ConsentsOut(BaseModel):
+    notice_version: str
+    purposes: list[ConsentPurposeOut]
+    history: list[dict[str, Any]]
+
+
+class EscalationContactIn(Strict):
+    escalation_phone: Annotated[str, Field(pattern=r"^\+[1-9][0-9]{7,14}$", max_length=16,
+                                           description="Mobile number in international format, e.g. +5511912345678.")]
+
+
+class EscalationContactOut(BaseModel):
+    escalation_phone: str | None = None
+
+
+class RestrictionRequestIn(Strict):
+    activity: RestrictableActivity
+
+
+class OwnRestrictionOut(BaseModel):
+    activity: str
+    basis: str
+    created_at: datetime
+    lifted_at: datetime | None = None
 
 
 async def _load_me(conn, principal: Principal) -> MeOut:
@@ -173,6 +231,12 @@ async def _build_export(conn, principal: Principal) -> PersonalDataExport:
            from public.break_glass_grants where user_id = %s order by granted_at desc limit 500""", uid)
     events = await fetch_all(conn, """select occurred_at, action, entity_type, outcome from public.events
            where actor_id = %s order by id desc limit 1000""", uid)
+    consent_history = await fetch_all(conn, """select purpose, notice_version, language, granted_at, withdrawn_at
+           from public.consent_grants where user_id = %s order by granted_at""", uid)
+    contact = await fetch_one(conn, "select escalation_phone, updated_at from public.staff_optional_contacts where user_id = %s",
+                              uid)
+    restrictions = await fetch_all(conn, """select activity, basis, created_at, lifted_at from public.processing_restrictions
+           where subject_type = 'staff' and subject_id = %s order by created_at""", uid)
 
     def of(kind: str) -> list[dict[str, Any]]:
         return [{"id": r["record_id"], "at": r["recorded_at"]} for r in refs if r["kind"] == kind]
@@ -182,7 +246,8 @@ async def _build_export(conn, principal: Principal) -> PersonalDataExport:
         privacy_notice_acknowledgements=consents, privacy_requests=requests, sessions=sessions,
         observations_authored=of("observation"), alarm_acknowledgements=of("alarm_acknowledgement"),
         maintenance_performed=of("maintenance"), files_uploaded=of("file_upload"), emergency_access_grants=grants,
-        audit_events=events, processing={**privacy.PROCESSING_INFO, "retention_days": await _retention_days(conn)})
+        consents=consent_history, optional_data={"escalation_contact": contact} if contact else {},
+        processing_restrictions=restrictions, audit_events=events, processing={**privacy.PROCESSING_INFO, "retention_days": await _retention_days(conn)})
 
 
 async def _retention_days(conn) -> int | None:
@@ -231,3 +296,100 @@ async def request_erasure(body: ErasureRequestIn, request: Request, principal: S
             await record_event(principal, "privacy.erasure_requested", "privacy_request", str(row["id"]),
                                conn=conn, request_id=request.state.request_id)
     return ErasureRequestOut(**row)
+
+
+# ---------------------------------------------------------------------------
+# Consent for optional personal data (T178) and its withdrawal (T604)
+# ---------------------------------------------------------------------------
+async def _consents(conn, principal: Principal) -> ConsentsOut:
+    rows = await consent.history(conn, principal.user_id)
+    active = {r["purpose"]: r for r in rows if r.get("withdrawn_at") is None}
+    purposes = [ConsentPurposeOut(purpose=key, **meta, active=key in active,
+                                  granted_at=active[key]["granted_at"] if key in active else None)
+                for key, meta in consent.CONSENT_PURPOSES.items()]
+    return ConsentsOut(notice_version=privacy.PRIVACY_NOTICE_VERSION, purposes=purposes, history=rows)
+
+
+@router.get("/consents", response_model=ConsentsOut)
+async def list_consents(principal: SelfService) -> ConsentsOut:
+    async with transaction(principal) as conn:
+        return await _consents(conn, principal)
+
+
+@router.post("/consents", response_model=ConsentsOut, status_code=201)
+async def grant_consent(body: ConsentGrantIn, request: Request, principal: SelfService) -> ConsentsOut:
+    """Opt in to one optional purpose. Consent is given under the CURRENT notice version only."""
+    if body.notice_version != privacy.PRIVACY_NOTICE_VERSION:
+        raise DomainError("The privacy notice has changed. Please reload and read the current version.", 409,
+                          code="privacy_notice_outdated")
+    async with transaction(principal) as conn:
+        row = await consent.grant(conn, principal.user_id, body.purpose, body.notice_version, request.state.request_id)
+        await record_event(principal, "consent.granted", "consent", str(row["id"]),
+                           details={"purpose": body.purpose, "notice_version": body.notice_version,
+                                    "language": consent.CONSENT_LANGUAGE},
+                           conn=conn, request_id=request.state.request_id)
+        return await _consents(conn, principal)
+
+
+@router.delete("/consents", response_model=ConsentsOut)
+async def withdraw_consent(purpose: Annotated[ConsentPurpose, Query()], request: Request,
+                           principal: SelfService) -> ConsentsOut:
+    """Withdraw consent: the grant row is kept as evidence and the dependent processing stops immediately."""
+    async with transaction(principal) as conn:
+        withdrawn = await consent.withdraw(conn, principal.user_id, purpose, request.state.request_id)
+        if not withdrawn:
+            raise DomainError("There is no active consent for this purpose.", 404, code="not_found")
+        await record_event(principal, "consent.withdrawn", "consent", purpose, details={"purpose": purpose},
+                           conn=conn, request_id=request.state.request_id)
+        return await _consents(conn, principal)
+
+
+@router.get("/escalation-contact", response_model=EscalationContactOut)
+async def get_escalation_contact(principal: SelfService) -> EscalationContactOut:
+    async with transaction(principal) as conn:
+        if not await consent.has(conn, principal.user_id, "escalation_contact"):
+            return EscalationContactOut()
+        row = await fetch_one(conn, "select escalation_phone from public.staff_optional_contacts where user_id = %s",
+                              (str(principal.user_id),))
+    return EscalationContactOut(**(row or {}))
+
+
+@router.put("/escalation-contact", response_model=EscalationContactOut)
+async def set_escalation_contact(body: EscalationContactIn, request: Request,
+                                 principal: SelfService) -> EscalationContactOut:
+    """Optional data: stored only while the escalation_contact consent is active (checked here and by RLS)."""
+    async with transaction(principal) as conn:
+        if not await consent.has(conn, principal.user_id, "escalation_contact"):
+            raise DomainError("Give consent to alarm escalation by text message before adding a phone number.", 409,
+                              code="consent_required")
+        await conn.execute("""insert into public.staff_optional_contacts (user_id, escalation_phone) values (%s, %s)
+               on conflict (user_id) do update set escalation_phone = excluded.escalation_phone, updated_at = now()""",
+                           (str(principal.user_id), body.escalation_phone))
+        await record_event(principal, "profile.optional_data_updated", "staff_profile", str(principal.user_id),
+                           details={"fields": ["escalation_phone"], "purpose": "escalation_contact"},
+                           conn=conn, request_id=request.state.request_id)
+    return EscalationContactOut(escalation_phone=body.escalation_phone)
+
+
+# ---------------------------------------------------------------------------
+# Restriction of processing (T754): view own restrictions, ask the administrators for one
+# ---------------------------------------------------------------------------
+@router.get("/processing-restrictions", response_model=Page[OwnRestrictionOut])
+async def my_processing_restrictions(principal: SelfService,
+                                     limit: Annotated[int, Query(ge=1, le=50)] = 50,
+                                     offset: Annotated[int, Query(ge=0, le=1000)] = 0) -> Page[OwnRestrictionOut]:
+    async with transaction(principal) as conn:
+        rows = await fetch_all(conn, """select activity, basis, created_at, lifted_at from public.processing_restrictions
+               where subject_type = 'staff' and subject_id = %s order by created_at desc limit %s offset %s""",
+                               (str(principal.user_id), limit + 1, offset))
+    return Page[OwnRestrictionOut](items=[OwnRestrictionOut(**r) for r in rows[:limit]],
+                                   next_offset=offset + limit if len(rows) > limit else None)
+
+
+@router.post("/processing-restrictions/request", status_code=202)
+async def request_processing_restriction(body: RestrictionRequestIn, request: Request, principal: SelfService) -> dict:
+    """Ask the administrators to restrict a secondary use of my data; they decide and apply it (audited)."""
+    await record_event(principal, "privacy.restriction_requested", "staff_profile", str(principal.user_id),
+                       details={"activity": body.activity}, request_id=request.state.request_id)
+    await notify_admins("processing_restriction_requested", {"user_id": str(principal.user_id), "activity": body.activity})
+    return {"detail": "Your request was sent to the administrators."}

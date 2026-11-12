@@ -55,4 +55,4 @@ if not await consent_service.has(conn, user_id, "alarm_sms_escalation"):
 - [ ] Vitest: the privacy page lists active consents and calls the DELETE endpoint when a toggle is switched off.
 - [ ] The export includes consent history.
 
-**Status:** Pending
+**Status:** Applied

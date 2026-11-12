@@ -117,8 +117,11 @@ def _host_allowed(host_header: str, allowed: Iterable[str]) -> bool:
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, allowed_hosts: Iterable[str] | None = None,
-                 allowed_origins: Iterable[str] | None = None):
+                 allowed_origins: Iterable[str] | None = None, require_https: bool = False):
         super().__init__(app)
+        # Production: a request the edge reports as plain HTTP is refused, so credentials are never accepted
+        # over an unencrypted hop (T21). Vercel redirects http:// to https:// before the function runs.
+        self.require_https = require_https
         self.allowed_hosts = tuple(allowed_hosts) if allowed_hosts else DEFAULT_ALLOWED_HOSTS
         # Cross-site request forgery, defence in depth (T29): a browser-sent state-changing request whose Origin
         # is not one of the SPA origins is refused before routing. None disables the check (unit-test apps).
@@ -138,6 +141,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             return _error("Request URL too long.", 414)
         if not _host_allowed(request.headers.get("host", ""), self.allowed_hosts):
             return _error("Invalid host.", 400)
+        proto = request.headers.get("x-forwarded-proto")
+        if self.require_https and proto is not None and proto.split(",")[0].strip().lower() != "https":
+            return _error("HTTPS is required.", 400)
         if any(h in request.headers for h in METHOD_OVERRIDE_HEADERS):
             return _error("HTTP method override is not supported.", 400)
         origin = request.headers.get("origin")
@@ -272,6 +278,10 @@ class _TooLarge(Exception):
     pass
 
 
+DEVICE_AUTH_PATH = re.compile(r"^/v1/monitors/[^/]+/assignment/?$")
+DEVICE_AUTH_PER_IP = 20
+
+
 @dataclass(frozen=True)
 class RouteLimit:
     """Extra per-route throttle for expensive or sensitive operations (requests per minute)."""
@@ -285,6 +295,8 @@ class RouteLimit:
 # Most specific first; the first matching rule applies (in addition to the per-client budget).
 ROUTE_LIMITS: tuple[RouteLimit, ...] = (
     RouteLimit("simulation-reset", frozenset({"POST"}), re.compile(r"^/v1/simulation/reset/?$"), 3),
+    # Device (system-account) authentication: pairing-code attempts per client (T70); see also DEVICE_AUTH_PER_IP.
+    RouteLimit("device-auth", frozenset({"POST"}), re.compile(r"^/v1/monitors/[^/]+/assignment/?$"), 10),
     RouteLimit("simulation", frozenset({"POST"}), re.compile(r"^/v1/simulation/"), 10),
     RouteLimit("reports", frozenset({"GET"}), re.compile(r"^/v1/reports/"), 5),
     RouteLimit("files-upload", frozenset({"POST"}), re.compile(r"^/v1/files/"), 10),
@@ -344,6 +356,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         budgets = [(f"ceiling|ip:{ip}", self.ip_ceiling)]
         if path.startswith(("/v1/auth", "/v1/break-glass")):
             budgets.append((f"auth|{client}", self.auth_per_minute))
+        if method == "POST" and DEVICE_AUTH_PATH.match(path):
+            # Per source address too, so one IP cannot cycle tokens or monitor ids to brute-force device secrets.
+            budgets.append((f"device-auth|ip:{ip}", DEVICE_AUTH_PER_IP))
         budgets.append((f"all|{client}", self.per_minute if subject else self.unauthenticated_per_minute))
         for rule in ROUTE_LIMITS:
             if method in rule.methods and rule.pattern.match(path):

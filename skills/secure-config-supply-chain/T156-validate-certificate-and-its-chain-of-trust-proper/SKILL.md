@@ -50,4 +50,4 @@ except (ssl.SSLCertVerificationError, httpx.ConnectError) as exc:
 - [ ] `test_t175_tls_verification_never_disabled_in_source` finds no `verify=False`, `CERT_NONE` or `check_hostname = False` in `backend/`.
 - [ ] Manual check: pointing `SUPABASE_URL` at a host with a self-signed certificate makes the API fail closed with 503 and a `tls_verification_failed` log entry.
 
-**Status:** Pending
+**Status:** Applied

@@ -47,4 +47,4 @@ create unique index if not exists patients_active_identity
 - [ ] `test_t177_email_change_goes_through_confirmed_supabase_flow` passes.
 - [ ] Pytest: creating a second active patient with the same name, birth year and ward returns 409; assigning an occupied bed returns 409.
 
-**Status:** Pending
+**Status:** Applied

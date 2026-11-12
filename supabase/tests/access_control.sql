@@ -26,6 +26,8 @@ begin
   foreach stmt in array array[
     'delete from public.events',
     'truncate public.events',
+    'update public.events set action = action',
+    'delete from private.device_auth_failures',
     'update public.observations set body = body',
     'delete from public.patients',
     'delete from public.observations',

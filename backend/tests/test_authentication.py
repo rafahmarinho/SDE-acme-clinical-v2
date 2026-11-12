@@ -597,3 +597,206 @@ def test_login_history_counts_failures_since_previous_success():
     assert "offset 1 limit 1" in body                                    # previous success, not the current one
     assert "p_user = public.current_staff_id() or public.current_staff_role() = 'admin'" in body  # own history only
     assert "interval '90 days'" in AUTH_SQL                              # retention
+
+
+# ---------------------------------------------------------------------------
+# T2 - secure password reset mechanism (config as code + templates; UI behaviour in frontend auth.test.tsx)
+# ---------------------------------------------------------------------------
+def test_t2_recovery_links_are_short_lived_rate_limited_and_notified():
+    email = AUTH_CFG["email"]
+    assert email["otp_expiry"] <= 1800                       # 15-30 minutes, single use (GoTrue one-time tokens)
+    assert email["max_frequency"] == "60s"                  # one recovery e-mail per address per minute
+    assert 0 < AUTH_CFG["rate_limit"]["email_sent"] <= 10 and 0 < AUTH_CFG["rate_limit"]["token_verifications"] <= 30
+    notice = email["notification"]["password_changed"]
+    assert notice["enabled"] is True                        # confirmation e-mail after every password change
+    body = (ROOT / notice["content_path"].removeprefix("./")).read_text(encoding="utf-8")
+    assert "{{ .Password" not in body and "password was changed" in body.lower()
+    assert (ROOT / email["template"]["recovery"]["content_path"].removeprefix("./")).exists()
+    assert all("*" not in u for u in AUTH_CFG["additional_redirect_urls"])  # exact redirect allow-list
+
+
+def test_t2_captcha_decision_is_documented_with_compensating_controls():
+    """CAPTCHA would need a third-party script/iframe, which the CSP forbids (T279); the decision and the
+    compensating controls are recorded so the gap stays visible."""
+    doc = (ROOT / "docs" / "security" / "authentication.md").read_text(encoding="utf-8")
+    assert AUTH_CFG["captcha"]["enabled"] is False
+    section = doc.split("### Anti-automation on recovery (T2)", 1)[1].split("\n## ", 1)[0]
+    for control in ("token_verifications", "max_frequency", "email_sent", "lockout", "Vercel Firewall"):
+        assert control in section, control
+
+
+# ---------------------------------------------------------------------------
+# T69 - strong credentials for server-to-server system accounts
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("value", ["0123456789abcdefghijklmnopqrstuv", "abcdefghijklmnopqrstuvwxyz012345",
+                                   "password1234567890", "zzzzzzzzzzzzzzzzzzzz", "<jwt-secret>", "Ab1!Ab1!"])
+def test_t69_sequential_common_short_and_placeholder_system_secrets_rejected(value):
+    assert passwords.system_secret_problems("SECRET", value, min_length=32)
+
+
+def test_t69_system_secret_floor_never_below_end_user_policy():
+    assert passwords.system_secret_problems("X", "Zq8-vR2kLp0", min_length=4)  # 11 chars < platform floor 12
+    assert passwords.PLATFORM_MIN_LENGTH == AUTH_CFG["minimum_password_length"]
+
+
+STRONG_JWT = "7hT2-xK9qLm4Vb8Np1Zr6Wc3Ys5Ud0Fg2Jk7Ha4Ee9Ti1Ro6"
+STRONG_DSN = "postgresql://acme_api:Zq8-vR2kLp0wXs9Tb7Yn@db:5432/postgres?sslmode=verify-full"
+
+
+def _prod(**overrides):
+    base = dict(app_env="production", supabase_url="https://x.supabase.co", supabase_anon_key="anon-key-value",
+                supabase_service_role_key="Sv9-kQ2wLx7pZr4Tn8Yb3Mc6", supabase_jwt_secret=STRONG_JWT,
+                database_url=STRONG_DSN)
+    base.update(overrides)
+    return Settings(**base)
+
+
+def test_t69_production_rejects_a_20_character_jwt_secret_and_accepts_48_random():
+    import secrets as _secrets
+
+    with pytest.raises(ValueError):
+        _prod(supabase_jwt_secret="Kx7-Pq2mZt9Lw4Rb8Nc1")      # 20 characters
+    assert _prod(supabase_jwt_secret=_secrets.token_urlsafe(36)).is_production  # 48 characters
+
+
+def test_t69_t60_production_requires_an_ec_p521_audit_signing_key_when_set():
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec, rsa
+
+    def pem(key) -> str:
+        return key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                 serialization.NoEncryption()).decode()
+
+    assert _prod(audit_signing_key=pem(ec.generate_private_key(ec.SECP521R1()))).is_production
+    for bad in (pem(ec.generate_private_key(ec.SECP256R1())), pem(rsa.generate_private_key(65537, 2048)), "not-a-pem"):
+        with pytest.raises(ValueError):
+            _prod(audit_signing_key=bad)
+
+
+def test_t69_database_dsn_must_verify_the_server_certificate():
+    assert passwords.database_url_problems(STRONG_DSN.replace("verify-full", "require"))
+    assert passwords.database_url_problems(STRONG_DSN) == []
+
+
+def test_t69_cli_device_secrets_are_unique_and_at_least_32_characters():
+    issued = {device_auth.new_device_secret()[0] for _ in range(1000)}
+    assert len(issued) == 1000 and min(len(s) for s in issued) >= 32
+
+
+# ---------------------------------------------------------------------------
+# T70 - lockout / throttling of system accounts (monitors presenting device secrets)
+# ---------------------------------------------------------------------------
+LOCKOUT_SQL = (SUPABASE / "migrations" / "0012_device_auth_lockout.sql").read_text(encoding="utf-8")
+
+
+def test_t70_device_lockout_backs_off_exponentially_with_a_24_hour_cap():
+    body = LOCKOUT_SQL.split("create or replace function public.verify_monitor_secret", 1)[1].split("end $$;", 1)[0]
+    assert "f.failures + 1 >= 5" in body and "locked_until > now()" in body
+    assert "interval '15 minutes' * power(2, least(f.lockouts, 7))" in body       # 15, 30, 60 ... minutes
+    assert "least(interval '24 hours'" in body                                     # capped at 24 hours
+    assert "delete from private.device_auth_failures where monitor_id = p_monitor" in body  # reset on success
+    assert "digest(convert_to(p_secret, 'UTF8'), 'sha256') = v_hash" in body
+    # state lives in the database, shared by every API instance; nothing is counted in process memory
+    assert "device_auth_failures" not in (BACKEND / "app" / "services" / "device_auth.py").read_text(encoding="utf-8")
+
+
+def test_t70_admin_unlock_is_database_enforced():
+    fn = LOCKOUT_SQL.split("create or replace function public.unlock_monitor_auth", 1)[1].split("end $$;", 1)[0]
+    assert "public.has_permission('settings:manage')" in fn and "security definer set search_path" in fn
+    assert "'public.unlock_monitor_auth(uuid) to acme_api_rw'" in LOCKOUT_SQL
+
+
+@pytest.fixture
+def monitor_env(monkeypatch):
+    from app.routers import monitors
+
+    env = SimpleNamespace(sql=[], events=[], alerts=[], verify_ok=False, locked=False)
+
+    @asynccontextmanager
+    async def fake_tx(principal, read_only=False):
+        yield _Conn(env.sql)
+
+    async def fake_one(conn, sql, params=()):
+        env.sql.append((sql, params))
+        if "verify_monitor_secret" in sql:
+            return {"ok": env.verify_ok}
+        if "monitor_auth_locked" in sql:
+            return {"locked": env.locked}
+        if "unlock_monitor_auth" in sql:
+            return {"unlocked": True}
+        return None
+
+    async def fake_record(principal, action, entity_type, entity_id=None, **kw):
+        env.events.append((action, kw.get("outcome", "success"), kw.get("details")))
+
+    async def fake_notify(kind, details=None):
+        env.alerts.append((kind, details))
+
+    monkeypatch.setattr(monitors, "transaction", fake_tx)
+    monkeypatch.setattr(monitors, "fetch_one", fake_one)
+    monkeypatch.setattr("app.db.fetch_one", fake_one)  # device_auth.verify_in_db uses app.db.fetch_one
+    monkeypatch.setattr(monitors, "record_event", fake_record)
+    monkeypatch.setattr(monitors, "notify_admins", fake_notify)
+    return env
+
+
+def _bind_body() -> dict:
+    return {"bed_id": str(uuid.uuid4()), "confirm": True, "pairing_code": "Device-Pairing-Code-Valid-1"}
+
+
+def test_t70_locked_monitor_gets_the_wrong_secret_response_plus_audit_and_admin_alert(client, identities, monitor_env):
+    mid = str(uuid.uuid4())
+    _, h = _admin_headers(identities, "biomed_tech")
+    wrong = client.post(f"/v1/monitors/{mid}/assignment", headers=h, json=_bind_body())
+    monitor_env.locked = True
+    locked = client.post(f"/v1/monitors/{mid}/assignment", headers=h, json=_bind_body())
+    assert wrong.status_code == locked.status_code == 403
+
+    def strip(r):
+        return {k: v for k, v in r.json().items() if k != "request_id"}
+
+    assert strip(wrong) == strip(locked)                                      # no oracle for "locked"
+    actions = [a for a, _, _ in monitor_env.events]
+    assert actions.count("monitor.auth_failed") == 2 and actions.count("monitor.auth_locked") == 1
+    assert monitor_env.alerts == [("device_auth_lockout", {"monitor_id": mid})]
+    # refused before any database write that binds the monitor (T558)
+    assert not any("monitor_assignments" in sql for sql, _ in monitor_env.sql)
+
+
+def test_t70_admin_unlock_is_audited_and_admin_only(client, identities, monitor_env):
+    mid = str(uuid.uuid4())
+    for role in ("biomed_tech", "nurse", "physician"):
+        _, h = _admin_headers(identities, role)
+        assert client.delete(f"/v1/monitors/{mid}/auth-lockout", headers=h).status_code == 403
+    _, h = _admin_headers(identities, "admin")
+    assert client.delete(f"/v1/monitors/{mid}/auth-lockout", headers=h).status_code == 204
+    assert ("monitor.auth_unlocked", "success", {"was_locked": True}) in monitor_env.events
+
+
+def test_t70_device_authentication_is_rate_limited_per_client_and_per_ip():
+    from app.core.middleware import DEVICE_AUTH_PER_IP, ROUTE_LIMITS, RateLimitMiddleware
+
+    rule = next(r for r in ROUTE_LIMITS if r.name == "device-auth")
+    path = f"/v1/monitors/{uuid.uuid4()}/assignment"
+    assert rule.pattern.match(path) and rule.per_minute <= 10 and DEVICE_AUTH_PER_IP <= 30
+    mw = RateLimitMiddleware(app=None, per_minute=120, auth_per_minute=10)
+    request = SimpleNamespace(url=SimpleNamespace(path=path), method="POST",
+                              headers={"x-vercel-forwarded-for": "203.0.113.9", "authorization": "Bearer t"},
+                              client=None)
+    keys = [k for k, _ in mw._budgets(request)]
+    assert "device-auth|ip:203.0.113.9" in keys                       # per source address
+    assert any(k.startswith("device-auth|u:") for k in keys)          # per client
+
+
+# ---------------------------------------------------------------------------
+# T558 - every component authenticates its peer before exchanging data
+# ---------------------------------------------------------------------------
+def test_t558_every_hop_authenticates_its_peer():
+    with pytest.raises(ValueError):
+        _prod(database_url=STRONG_DSN.replace("verify-full", "require"))   # API -> Postgres: verified TLS only
+    with pytest.raises(ValueError):
+        _prod(supabase_url="http://x.supabase.co")                          # API -> Supabase: https only
+    csp = json.loads((FRONTEND / "vercel.json").read_text(encoding="utf-8"))["headers"][0]["headers"][0]["value"]
+    connect = next(d for d in csp.split(";") if d.strip().startswith("connect-src")).split()[1:]
+    assert all(o == "'self'" or o.startswith(("https://", "wss://")) for o in connect)  # browser -> pinned origins
+    assert "must use https" in (FRONTEND / "src" / "services" / "api.ts").read_text(encoding="utf-8")

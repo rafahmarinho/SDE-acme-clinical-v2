@@ -56,8 +56,10 @@ sign_in_sign_ups = 10
 token_verifications = 10
 
 [auth.captcha]
-# CAPTCHA is not enabled yet: it needs a Turnstile/hCaptcha widget on Login/ForgotPassword and a CSP
-# change. Brute force is limited by [auth.rate_limit] and the per-account lockout hook below.
+# CAPTCHA stays off by decision (docs/security/authentication.md, "Anti-automation on recovery"): every
+# Supabase-supported provider (Turnstile, hCaptcha) needs a third-party script and frame, which the CSP
+# (script-src 'self', frame-src 'none'; T279/T331) forbids. Automation against sign-in and recovery is
+# limited by [auth.rate_limit] (per IP), max_frequency (per address), the lockout hook and uniform responses.
 enabled = false
 
 [auth.sessions]
@@ -73,10 +75,52 @@ enable_confirmations = true
 # Password changes from a session older than 24 h require reauthentication (nonce), in addition to
 # the current-password check performed by the change-password screen.
 secure_password_change = true
+# At most one e-mail per address per minute (recovery, invitation, change), on top of [auth.rate_limit].
 max_frequency = "60s"
 otp_length = 6
-# Invitation, recovery and e-mail-change links are single use and expire after one hour.
-otp_expiry = 3600
+# Invitation, recovery and e-mail-change links are single use and expire after 15 minutes (T2).
+otp_expiry = 900
+
+# Custom templates (T1386/T2157): links back to the app only - no passwords, no patient data, a fixed
+# "we never ask for your password" statement and a disclaimer. Tested by backend/tests/test_secure_config.py.
+[auth.email.template.invite]
+subject = "You have been invited to ACME Clinical"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.recovery]
+subject = "Reset your ACME Clinical password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your new ACME Clinical e-mail address"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "Your ACME Clinical confirmation code"
+content_path = "./supabase/templates/reauthentication.html"
+
+# Security notification after every password change (T2 step 6). The password is never included.
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Your ACME Clinical password was changed"
+content_path = "./supabase/templates/password_changed.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "Your ACME Clinical e-mail address was changed"
+content_path = "./supabase/templates/email_changed.html"
+
+# Transactional e-mail through the organisation's provider (SPF/DKIM/DMARC aligned, see
+# docs/security/deployment.md). Credentials come from the operator's environment, never from this file.
+# Port 587 = SMTP submission with STARTTLS; the provider must refuse plaintext AUTH.
+[auth.email.smtp]
+enabled = true
+host = "env(SUPABASE_SMTP_HOST)"
+port = 587
+user = "env(SUPABASE_SMTP_USER)"
+pass = "env(SUPABASE_SMTP_PASS)"
+admin_email = "env(SUPABASE_SMTP_ADMIN_EMAIL)"
+sender_name = "ACME Clinical"
 
 [auth.sms]
 enable_signup = false

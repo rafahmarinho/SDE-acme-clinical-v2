@@ -85,6 +85,37 @@ route for events. Simulation reset never touches `events`/`system_alerts` and is
 WORM storage is not available on this stack; tampering by a DB superuser is detected by the hash
 chain + signatures.
 
+Audit information (T349) = `public.events`, `public.system_alerts`, the audit settings in
+`public.security_settings` (changes to them are audited, T371) and generated audit reports. All are classified
+in data-classification.md. The full history, `GET /v1/events/integrity` and the audit report
+(`GET /v1/reports/audit`, CSV `audit_events`) need `events:read_all` (administrators); other roles see only their
+own events. The live CI suite `supabase/tests/access_control.sql` proves, as `acme_api`, that `update`, `delete`
+and `truncate` on `public.events` fail with a permission error. Old audit data is removed only by the documented
+retention process, never by application users. Application logs are redacted before writing; Vercel log access
+is limited to team owners and log drains go over TLS to a store with retention/immutability (operator checklist in
+deployment.md, cloud-infrastructure T2293/T2368).
+
+## Database server logging (T2602)
+
+In the repository: `0014_database_audit_logging.sql` enables `pgaudit` and sets, for `acme_api`, `acme_api_rw`
+and `acme_reset_owner`, `pgaudit.log = 'write, ddl, role'` (every data change, schema change and privilege change,
+with role, database, statement class and object) with `log_parameter = off` and no `read` class, so bound values
+and SELECTs on patient tables never copy PHI into the platform log (T46). The API connects with
+`application_name=acme-clinical-api` (`backend/app/db.py`), so every Postgres log line is attributable to it;
+application-level who/what/when is in the signed `public.events`.
+
+Supabase-managed (operator checklist; cannot be set from migrations):
+
+- [ ] Dashboard → Database → Extensions: `pgaudit` enabled (the migration raises a notice if it could not).
+- [ ] Logs Explorer shows server start/stop/restart, connection authorisations, errors and pgaudit lines with
+      timestamp, role, database and `application_name`; enable connection logging if the plan exposes it.
+- [ ] Supabase log drain to the SIEM with retention matching this document (security logs >= 1 year).
+- [ ] Organisation audit log enabled for Dashboard configuration changes (project settings, Auth, network
+      restrictions); reviewed monthly.
+- [ ] Accepted gaps recorded: project pause/resume on managed instances is visible only in the organisation audit
+      log; transaction commit/rollback is not logged per statement (pgaudit logs the statements of committed and
+      rolled-back transactions alike).
+
 ## Failure handling (T431, T432)
 
 `FAILURE_POLICY` in `core/logging.py` is the catalogue (each entry has a test):

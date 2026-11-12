@@ -30,3 +30,53 @@ stated in the notice and in the confirmation text shown before the request is se
   (Authentication > Users > ban and edit e-mail).
 * Data protection impact: export and erasure are high-risk operations, hence password re-entry; failed re-entries are
   audited (`privacy.reauth_failed`) and count towards the Supabase Auth lockout.
+
+## Consent for optional data and its withdrawal (T178, T604)
+
+Necessary processing (work account, sign-in and audit data, clinical records) has a lawful basis other than consent
+and is covered by the notice above. Only **optional** items need consent; they are listed in
+`CONSENT_PURPOSES` (`backend/app/services/consent.py`) and shown on Profile > Optional uses of your data, each with
+its purpose, data categories, retention, third parties and how to withdraw. Toggles start **off**.
+
+| Data item | Necessary / optional | Basis |
+|---|---|---|
+| Name, work e-mail, role, wards, sign-in times/IP, audit trail | necessary | employment / legal obligation / security |
+| Clinical records you author | necessary | provision of care, health-record law |
+| Mobile phone for alarm escalation (`staff_optional_contacts.escalation_phone`) | optional | **consent** (`escalation_contact`) |
+
+* Grant: `POST /v1/me/consents` (`purpose`, current `notice_version`); stored in `public.consent_grants` with
+  purpose, notice version, language, request id and time; audited as `consent.granted`. Consent is separate from the
+  notice acknowledgement. A new purpose or a new notice version needs a new grant.
+* Gate: `PUT /v1/me/escalation-contact` returns **409 `consent_required`** without an active grant; the RLS policy
+  of `staff_optional_contacts` repeats the check (`public.has_active_consent`) at time of use.
+* Withdraw: `DELETE /v1/me/consents?purpose=...` (one toggle, as easy as granting). The grant row is kept with
+  `withdrawn_at` as evidence, the phone number is deleted immediately, `consent.withdrawn` is audited. Withdrawal does
+  not erase other data; that is the erasure flow. The (simulated) text-message processor holds no copy, so no
+  processor notification is needed; a real integration must be told to delete the number.
+* Erasure/pseudonymisation closes every active grant and deletes optional data (trigger
+  `staff_erased_privacy_cleanup`). The personal-data export includes `consents`, `optional_data` and
+  `processing_restrictions`.
+* Patient data never relies on consent; these purposes apply to staff only.
+
+## Restriction of processing (T754)
+
+Restrictable activities (secondary uses): `staff_activity_report` (the audit summary report and audit CSV export),
+`statistics` (ward activity report, CSV export and `reporting.*` views) and `research_extract` (de-identified
+extract). Clinical care screens and the legally required audit trail (`public.events`, integrity verification) are
+**not** restrictable. Administrators (`staff:manage`) set or lift a restriction
+(`POST`/`DELETE /v1/staff/{user_id}/processing-restrictions`, basis: objection, accuracy contested, unlawful
+processing, legal claims), both audited; staff see their own restrictions and ask for one from the Profile page
+(`POST /v1/me/processing-restrictions/request`, which alerts administrators). Restricted data stays stored but is
+excluded at the query layer (`public.processing_allowed()`); the audit summary reports how many subjects were
+excluded. Patient restrictions are recorded by administrators in `public.processing_restrictions` with
+`subject_type = 'patient'`.
+
+## Primary and secondary purposes (T544, T377)
+
+* Primary purpose: care on the live screens (ward overview, patient detail, alarms) by clinical roles with ward access.
+* Secondary purposes: quality reports and statistics (ward activity report, `reporting.*` views), research, alarm
+  threshold tuning and training datasets (research extract). They use only aggregated data with small-cell
+  suppression (k >= 5, also in the CSV export) or the de-identified extract (Safe Harbor method; see
+  data-classification.md). New secondary views or extracts need a privacy review and a test. No processor performs
+  de-identification for ACME Clinical; if one is engaged, give written instructions and record them here.
+* Demo and test data (`supabase/seed.sql`) are fictitious; real data is never copied into demo or test environments.

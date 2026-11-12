@@ -49,4 +49,4 @@ def _https_outside_local_development(self) -> "Settings":
 - [ ] Vitest: building with `VITE_API_URL=http://api.example.com` in production mode throws.
 - [ ] Manual check: `testssl.sh` against the frontend and API domains shows only TLS 1.2/1.3 and no compression.
 
-**Status:** Pending
+**Status:** Applied

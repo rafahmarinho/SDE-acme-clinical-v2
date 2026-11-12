@@ -11,7 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from psycopg.errors import UniqueViolation
 
-from app.core.audit import record_event
+from app.core.audit import notify_admins, record_event
 from app.core.errors import DomainError
 from app.core.security import Perm, Principal, require
 from app.db import fetch_all, fetch_one, transaction
@@ -46,7 +46,7 @@ async def assign_monitor(monitor_id: UUID, body: AssignMonitor, request: Request
                          principal: Annotated[Principal, Depends(require(Perm.DEVICE_WRITE))]) -> MonitorOut:
     # Device authenticity first, in its own transaction, so the failure counter (throttling) and the audit
     # record of a failed attempt are committed even though the request is refused.
-    auth_failed = False
+    auth_failed = locked = False
     async with transaction(principal) as conn:
         try:
             await device_auth.verify_in_db(conn, monitor_id, body.pairing_code)
@@ -54,7 +54,15 @@ async def assign_monitor(monitor_id: UUID, body: AssignMonitor, request: Request
             auth_failed = True
             await record_event(principal, "monitor.auth_failed", "monitor", str(monitor_id), outcome="failure",
                                error_code="device_auth_failed", conn=conn, request_id=request.state.request_id)
+            state = await fetch_one(conn, device_auth.LOCKED_SQL, (str(monitor_id),))
+            locked = bool(state and state.get("locked"))
+            if locked:
+                await record_event(principal, "monitor.auth_locked", "monitor", str(monitor_id), outcome="denied",
+                                   error_code="device_auth_locked", conn=conn, request_id=request.state.request_id)
     if auth_failed:
+        if locked:
+            await notify_admins("device_auth_lockout", {"monitor_id": str(monitor_id)})
+        # Identical response for wrong secret, unknown monitor and locked device (no oracle for brute force).
         raise DomainError(PAIRING_FAILED, 403, code="device_auth_failed")
     async with transaction(principal) as conn:
         monitor = await fetch_one(conn, "select id, status::text as status from public.monitors where id = %s for update",
@@ -89,3 +97,14 @@ async def unassign_monitor(monitor_id: UUID, request: Request,
             raise HTTPException(404, "Monitor is not bound to a bed.")
         await record_event(principal, "monitor.unbound", "monitor", str(monitor_id), details={"bed_id": str(updated["bed_id"])},
                            conn=conn, request_id=request.state.request_id)
+
+
+@router.delete("/{monitor_id}/auth-lockout", status_code=204)
+async def unlock_monitor(monitor_id: UUID, request: Request,
+                         principal: Annotated[Principal, Depends(require(Perm.SETTINGS_MANAGE))]) -> None:
+    """Administrator unlock of a monitor whose pairing-code verification is locked (T70); audited."""
+    async with transaction(principal) as conn:
+        row = await fetch_one(conn, device_auth.UNLOCK_SQL, (str(monitor_id),))
+        was_locked = bool(row and row.get("unlocked"))
+        await record_event(principal, "monitor.auth_unlocked", "monitor", str(monitor_id),
+                           details={"was_locked": was_locked}, conn=conn, request_id=request.state.request_id)

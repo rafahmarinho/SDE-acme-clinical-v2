@@ -63,4 +63,4 @@ provider = "turnstile"
 - [ ] Vitest: after a successful reset with "sign out everywhere" checked, `supabase.auth.signOut` is called with `{ scope: "global" }`.
 - [ ] Manual check: a recovery link used twice, or after expiry, is rejected; the confirmation e-mail does not contain the password.
 
-**Status:** Pending
+**Status:** Applied

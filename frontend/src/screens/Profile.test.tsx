@@ -136,3 +136,82 @@ describe("personal data controls", () => {
     expect(screen.getByText(/erasure requested on/i)).toBeTruthy();
   });
 });
+
+const CONSENTS = (active: boolean) => ({
+  notice_version: PRIVACY_NOTICE_VERSION,
+  purposes: [
+    {
+      purpose: "escalation_contact",
+      title: "Alarm escalation by text message",
+      description: "Use a mobile phone number you provide.",
+      data_categories: ["Mobile phone number"],
+      retention: "Until you withdraw consent.",
+      third_parties: ["Text-message provider (simulated)."],
+      withdrawal: "Switch the toggle off.",
+      required: false,
+      active,
+      granted_at: active ? "2026-11-10T10:00:00Z" : null,
+    },
+  ],
+  history: [],
+});
+
+function routeRequests(consents: unknown) {
+  requestMock.mockImplementation(async (_method: string, path: string) => {
+    if (path === "/v1/me/consents") return consents;
+    if (path === "/v1/me/processing-restrictions") return { items: [] };
+    if (path === "/v1/me/escalation-contact") return { escalation_phone: null };
+    return undefined;
+  });
+}
+
+describe("consent for optional data (T178/T604)", () => {
+  it("renders every optional purpose switched off with visible Accept and Decline buttons", async () => {
+    routeRequests(CONSENTS(false));
+    renderProfile({ privacy_notice_required: false, privacy_notice_version: PRIVACY_NOTICE_VERSION });
+    const toggle = (await screen.findByRole("switch", { name: /allow alarm escalation/i })) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+    expect(screen.getByText(/mobile phone number$/i)).toBeTruthy(); // data category shown before consent
+    expect(screen.queryByLabelText(/mobile phone for escalation/i)).toBeNull(); // nothing collected without consent
+  });
+
+  it("Accept records the grant under the current notice version", async () => {
+    routeRequests(CONSENTS(false));
+    renderProfile({ privacy_notice_required: false, privacy_notice_version: PRIVACY_NOTICE_VERSION });
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    await vi.waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("POST", "/v1/me/consents", {
+        body: { purpose: "escalation_contact", notice_version: PRIVACY_NOTICE_VERSION },
+      }),
+    );
+  });
+
+  it("lists an active consent and calls DELETE when its toggle is switched off", async () => {
+    routeRequests(CONSENTS(true));
+    renderProfile({ privacy_notice_required: false, privacy_notice_version: PRIVACY_NOTICE_VERSION });
+    const toggle = (await screen.findByRole("switch", { name: /allow alarm escalation/i })) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(screen.getByLabelText(/mobile phone for escalation/i)).toBeTruthy();
+    fireEvent.click(toggle);
+    await vi.waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("DELETE", "/v1/me/consents", { query: { purpose: "escalation_contact" } }),
+    );
+    expect(await screen.findByText(/withdrawn on/i)).toBeTruthy();
+  });
+});
+
+describe("restriction of processing (T754)", () => {
+  it("lets the user ask the administrators to restrict a secondary use", async () => {
+    routeRequests(CONSENTS(false));
+    renderProfile({ privacy_notice_required: false, privacy_notice_version: PRIVACY_NOTICE_VERSION });
+    fireEvent.change(screen.getByLabelText(/^activity$/i), { target: { value: "statistics" } });
+    fireEvent.click(screen.getByRole("button", { name: /ask an administrator to restrict/i }));
+    await vi.waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("POST", "/v1/me/processing-restrictions/request", {
+        body: { activity: "statistics" },
+      }),
+    );
+  });
+});

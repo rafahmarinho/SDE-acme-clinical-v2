@@ -1,0 +1,13 @@
+# Release bundle (T49): ship only the application. Test code, fixtures, caches, logs and local env files
+# never reach the Vercel function.
+tests/
+pytest.ini
+requirements-dev.txt
+.pytest_cache/
+__pycache__/
+*.pyc
+*.log
+.coverage
+htmlcov/
+.env
+.env.*

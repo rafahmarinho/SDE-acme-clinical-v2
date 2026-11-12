@@ -17,7 +17,7 @@ Rules for agents implementing this repository:
 | Project ID | 32 |
 | Business Unit / Application | Afrika & SC - Labs (9) / ACME Clinical v2 (19) |
 | Risk Policy | On-Boarding Policy (1) |
-| Total Countermeasures | 334 (316 file-tracked + 18 PROCESS note-only) |
+| Total Countermeasures | 394 (371 file-tracked + 23 PROCESS note-only; 334 survey-driven + 60 risk-policy) |
 | Source | Spec files (specs/PRD.md) |
 | Architecture | FastAPI + Pydantic API (`backend/`), React + Vite + TypeScript SPA with pnpm (`frontend/`), Supabase PostgreSQL/Auth/Storage/Realtime (`supabase/`), deployed separately on Vercel |
 
@@ -25,35 +25,35 @@ Rules for agents implementing this repository:
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| CODE_FIX | 234 | Secure implementation needed in application code, SQL migrations, security tests or repo config |
-| INFRA | 82 | External infrastructure (Vercel / Supabase platform settings, cloud/org IT) |
-| **FILE-TRACKED TOTAL** | **316** | Countermeasures with local skill files |
+| CODE_FIX | 284 | Secure implementation needed in application code, SQL migrations, security tests or repo config |
+| INFRA | 87 | External infrastructure (Vercel / Supabase platform settings, cloud/org IT) |
+| **FILE-TRACKED TOTAL** | **371** | Countermeasures with local skill files |
 
-> **PROCESS countermeasures (18) are noted in SD Elements only, not tracked locally:** T2331, T380, T4594, T605, T2162, T2160, T454, T195, T176, T2356, T753, T2166, T453, T750, T2324, T756, T757, T2165.
+> **PROCESS countermeasures (23) are noted in SD Elements only, not tracked locally:** T2331, T380, T4594, T605, T2162, T2160, T454, T195, T176, T2356, T753, T2166, T453, T750, T2324, T756, T757, T2165, CT1, CT2, T2348, T755, T2128.
 
 ## Skill Files
 
 | Domain | Countermeasures | Category |
 |--------|----------------|----------|
-| authentication | 38 | CODE_FIX |
-| session-management | 23 | CODE_FIX |
-| authorization | 22 | CODE_FIX |
-| api-security | 8 | CODE_FIX |
-| input-validation | 30 | CODE_FIX |
-| web-frontend-security | 31 | CODE_FIX |
-| logging-audit | 16 | CODE_FIX |
-| file-handling | 14 | CODE_FIX |
+| authentication | 42 |  |
+| session-management | 26 |  |
+| authorization | 26 |  |
+| api-security | 14 |  |
+| input-validation | 37 |  |
+| web-frontend-security | 35 |  |
+| logging-audit | 17 |  |
+| file-handling | 15 |  |
 | clinical-safety-resilience | 11 | CODE_FIX |
-| privacy | 16 | CODE_FIX |
-| secure-config-supply-chain | 19 | CODE_FIX |
-| database | 6 | CODE_FIX |
-| cloud-infrastructure | 55 | INFRA |
-| database-infrastructure | 27 | INFRA |
+| privacy | 23 |  |
+| secure-config-supply-chain | 30 |  |
+| database | 8 |  |
+| cloud-infrastructure | 59 |  |
+| database-infrastructure | 28 |  |
 | **Total** | **316** | |
 
 ## Countermeasure Index
 
-### authentication (38)
+### authentication (42)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -95,7 +95,11 @@ Rules for agents implementing this repository:
 | T589 | Verify that all the components are authenticated explicitly | [skills/authentication/T589-verify-that-all-the-components-are-authenticated-e/SKILL.md](./skills/authentication/T589-verify-that-all-the-components-are-authenticated-e/SKILL.md) | 9 | CODE_FIX | Applied |
 | T2270 | Test to confirm that password policies are configurable | [skills/authentication/T2270-test-to-confirm-that-password-policies-are-configu/SKILL.md](./skills/authentication/T2270-test-to-confirm-that-password-policies-are-configu/SKILL.md) | 5 | CODE_FIX | Applied |
 | T2277 | Test to confirm the use of an account and identity management system | [skills/authentication/T2277-test-to-confirm-the-use-of-an-account-and-identity/SKILL.md](./skills/authentication/T2277-test-to-confirm-the-use-of-an-account-and-identity/SKILL.md) | 7 | CODE_FIX | Applied |
-### session-management (23)
+| T2 | Secure the password reset mechanism | [skills/authentication/T2-secure-the-password-reset-mechanism/SKILL.md](./skills/authentication/T2-secure-the-password-reset-mechanism/SKILL.md) | 9 | CODE_FIX | Applied |
+| T558 | Authenticate all other components before any network communication with them | [skills/authentication/T558-authenticate-all-other-components-before-any-netwo/SKILL.md](./skills/authentication/T558-authenticate-all-other-components-before-any-netwo/SKILL.md) | 9 | CODE_FIX | Applied |
+| T69 | Strong password requirements for server-to-server system accounts | [skills/authentication/T69-strong-password-requirements-for-server-to-server/SKILL.md](./skills/authentication/T69-strong-password-requirements-for-server-to-server/SKILL.md) | 8 | CODE_FIX | Applied |
+| T70 | Implement account lockout or authentication throttling for system accounts | [skills/authentication/T70-implement-account-lockout-or-authentication-thrott/SKILL.md](./skills/authentication/T70-implement-account-lockout-or-authentication-thrott/SKILL.md) | 8 | CODE_FIX | Applied |
+### session-management (26)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -122,7 +126,10 @@ Rules for agents implementing this repository:
 | T1092 | Do not store sensitive cleartext information in cookies | [skills/session-management/T1092-do-not-store-sensitive-cleartext-information-in-co/SKILL.md](./skills/session-management/T1092-do-not-store-sensitive-cleartext-information-in-co/SKILL.md) | 4 | CODE_FIX | Applied |
 | T1093 | Test that cookies do not contain sensitive cleartext information | [skills/session-management/T1093-test-that-cookies-do-not-contain-sensitive-clearte/SKILL.md](./skills/session-management/T1093-test-that-cookies-do-not-contain-sensitive-clearte/SKILL.md) | 4 | CODE_FIX | Applied |
 | T1540 | Verify that browser data is cleared upon user logout | [skills/session-management/T1540-verify-that-browser-data-is-cleared-upon-user-logo/SKILL.md](./skills/session-management/T1540-verify-that-browser-data-is-cleared-upon-user-logo/SKILL.md) | 8 | CODE_FIX | Applied |
-### authorization (22)
+| T1468 | Encrypt sensitive data at rest in the browser | [skills/session-management/T1468-encrypt-sensitive-data-at-rest-in-the-browser/SKILL.md](./skills/session-management/T1468-encrypt-sensitive-data-at-rest-in-the-browser/SKILL.md) | 9 | CODE_FIX | Applied |
+| T1539 | Clear browser data on user logout | [skills/session-management/T1539-clear-browser-data-on-user-logout/SKILL.md](./skills/session-management/T1539-clear-browser-data-on-user-logout/SKILL.md) | 8 | CODE_FIX | Applied |
+| T20 | Generate unique session IDs and reset old IDs after authentication | [skills/session-management/T20-generate-unique-session-ids-and-reset-old-ids-afte/SKILL.md](./skills/session-management/T20-generate-unique-session-ids-and-reset-old-ids-afte/SKILL.md) | 9 | CODE_FIX | Applied |
+### authorization (26)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -148,7 +155,11 @@ Rules for agents implementing this repository:
 | T2282 | Test to confirm that unauthenticated parts of the application are accessible | [skills/authorization/T2282-test-to-confirm-that-unauthenticated-parts-of-the/SKILL.md](./skills/authorization/T2282-test-to-confirm-that-unauthenticated-parts-of-the/SKILL.md) | 8 | CODE_FIX | Applied |
 | T2388 | Enforce the principle of separation of duties | [skills/authorization/T2388-enforce-the-principle-of-separation-of-duties/SKILL.md](./skills/authorization/T2388-enforce-the-principle-of-separation-of-duties/SKILL.md) | 9 | CODE_FIX | Applied |
 | T2393 | Verify the principle of Separation of Duties is strongly implemented | [skills/authorization/T2393-verify-the-principle-of-separation-of-duties-is-st/SKILL.md](./skills/authorization/T2393-verify-the-principle-of-separation-of-duties-is-st/SKILL.md) | 9 | CODE_FIX | Applied |
-### api-security (8)
+| T17 | Do not only rely on client-side authorization | [skills/authorization/T17-do-not-only-rely-on-client-side-authorization/SKILL.md](./skills/authorization/T17-do-not-only-rely-on-client-side-authorization/SKILL.md) | 8 | CODE_FIX | Applied |
+| T338 | Control access to resources through user authentication and authorization | [skills/authorization/T338-control-access-to-resources-through-user-authentic/SKILL.md](./skills/authorization/T338-control-access-to-resources-through-user-authentic/SKILL.md) | 7 | CODE_FIX | Applied |
+| T378 | Authorize every request for data objects | [skills/authorization/T378-authorize-every-request-for-data-objects/SKILL.md](./skills/authorization/T378-authorize-every-request-for-data-objects/SKILL.md) | 8 | CODE_FIX | Applied |
+| T50 | Use indirect object reference maps if accessing files | [skills/authorization/T50-use-indirect-object-reference-maps-if-accessing-fi/SKILL.md](./skills/authorization/T50-use-indirect-object-reference-maps-if-accessing-fi/SKILL.md) | 8 | CODE_FIX | Applied |
+### api-security (14)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -160,7 +171,13 @@ Rules for agents implementing this repository:
 | T1363 | Verify if message throttling is properly performed in Web APIs | [skills/api-security/T1363-verify-if-message-throttling-is-properly-performed/SKILL.md](./skills/api-security/T1363-verify-if-message-throttling-is-properly-performed/SKILL.md) | 8 | CODE_FIX | Applied |
 | T1542 | Use the correct HTTP methods for making state-changing operations | [skills/api-security/T1542-use-the-correct-http-methods-for-making-state-chan/SKILL.md](./skills/api-security/T1542-use-the-correct-http-methods-for-making-state-chan/SKILL.md) | 7 | CODE_FIX | Applied |
 | T2140 | Test that APIs do not expose sensitive information | [skills/api-security/T2140-test-that-apis-do-not-expose-sensitive-informatio/SKILL.md](./skills/api-security/T2140-test-that-apis-do-not-expose-sensitive-informatio/SKILL.md) | 7 | CODE_FIX | Applied |
-### input-validation (30)
+| T1362 | Perform message throttling in Web APIs | [skills/api-security/T1362-perform-message-throttling-in-web-apis/SKILL.md](./skills/api-security/T1362-perform-message-throttling-in-web-apis/SKILL.md) | 8 | CODE_FIX | Applied |
+| T166 | Protect against JSON hijacking | [skills/api-security/T166-protect-against-json-hijacking/SKILL.md](./skills/api-security/T166-protect-against-json-hijacking/SKILL.md) | 7 | CODE_FIX | Applied |
+| T2139 | Prevent information exposure through APIs | [skills/api-security/T2139-prevent-information-exposure-through-apis/SKILL.md](./skills/api-security/T2139-prevent-information-exposure-through-apis/SKILL.md) | 7 | CODE_FIX | Applied |
+| T2600 | Control the result set size returned by a query | [skills/api-security/T2600-control-the-result-set-size-returned-by-a-query/SKILL.md](./skills/api-security/T2600-control-the-result-set-size-returned-by-a-query/SKILL.md) | 7 | CODE_FIX | Applied |
+| T35 | Fine-tune HTTP server settings | [skills/api-security/T35-fine-tune-http-server-settings/SKILL.md](./skills/api-security/T35-fine-tune-http-server-settings/SKILL.md) | 9 | CODE_FIX | Applied |
+| T536 | Restrict the size of incoming messages in services | [skills/api-security/T536-restrict-the-size-of-incoming-messages-in-services/SKILL.md](./skills/api-security/T536-restrict-the-size-of-incoming-messages-in-services/SKILL.md) | 8 | CODE_FIX | Applied |
+### input-validation (37)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -194,7 +211,14 @@ Rules for agents implementing this repository:
 | T1392 | Test for Server Side Request Forgery | [skills/input-validation/T1392-test-for-server-side-request-forgery/SKILL.md](./skills/input-validation/T1392-test-for-server-side-request-forgery/SKILL.md) | 8 | CODE_FIX | Applied |
 | T2608 | Verify that the connection string is protected against connection string parameter pollution | [skills/input-validation/T2608-verify-that-the-connection-string-is-protected-aga/SKILL.md](./skills/input-validation/T2608-verify-that-the-connection-string-is-protected-aga/SKILL.md) | 9 | CODE_FIX | Applied |
 | T2609 | Verify that the result set size returned by queries are controlled | [skills/input-validation/T2609-verify-that-the-result-set-size-returned-by-querie/SKILL.md](./skills/input-validation/T2609-verify-that-the-result-set-size-returned-by-querie/SKILL.md) | 7 | CODE_FIX | Applied |
-### web-frontend-security (31)
+| T1144 | Prevent Server-Side Template Injection (SSTI) | [skills/input-validation/T1144-prevent-server-side-template-injection-ssti/SKILL.md](./skills/input-validation/T1144-prevent-server-side-template-injection-ssti/SKILL.md) | 8 | CODE_FIX | Applied |
+| T1365 | Mitigate Server Side Request Forgery | [skills/input-validation/T1365-mitigate-server-side-request-forgery/SKILL.md](./skills/input-validation/T1365-mitigate-server-side-request-forgery/SKILL.md) | 8 | CODE_FIX | Applied |
+| T2599 | Protect against connection string parameter pollution | [skills/input-validation/T2599-protect-against-connection-string-parameter-pollut/SKILL.md](./skills/input-validation/T2599-protect-against-connection-string-parameter-pollut/SKILL.md) | 9 | CODE_FIX | Applied |
+| T36 | Escape untrusted data in HTML, HTML attributes, CSS, and JavaScript | [skills/input-validation/T36-escape-untrusted-data-in-html-html-attributes-css/SKILL.md](./skills/input-validation/T36-escape-untrusted-data-in-html-html-attributes-css/SKILL.md) | 8 | CODE_FIX | Applied |
+| T37 | Avoid DOM-based Cross-Site Scripting (XSS) | [skills/input-validation/T37-avoid-dom-based-cross-site-scripting-xss/SKILL.md](./skills/input-validation/T37-avoid-dom-based-cross-site-scripting-xss/SKILL.md) | 8 | CODE_FIX | Applied |
+| T38 | Bind variables in SQL statements | [skills/input-validation/T38-bind-variables-in-sql-statements/SKILL.md](./skills/input-validation/T38-bind-variables-in-sql-statements/SKILL.md) | 10 | CODE_FIX | Applied |
+| T42 | Avoid relying on untrusted data for server-side selection | [skills/input-validation/T42-avoid-relying-on-untrusted-data-for-server-side-se/SKILL.md](./skills/input-validation/T42-avoid-relying-on-untrusted-data-for-server-side-se/SKILL.md) | 10 | CODE_FIX | Applied |
+### web-frontend-security (35)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -229,7 +253,11 @@ Rules for agents implementing this repository:
 | T1544 | Isolate untrusted content in a sandbox | [skills/web-frontend-security/T1544-isolate-untrusted-content-in-a-sandbox/SKILL.md](./skills/web-frontend-security/T1544-isolate-untrusted-content-in-a-sandbox/SKILL.md) | 5 | CODE_FIX | Applied |
 | T1873 | Prevent information leakage through HTTP response headers | [skills/web-frontend-security/T1873-prevent-information-leakage-through-http-response/SKILL.md](./skills/web-frontend-security/T1873-prevent-information-leakage-through-http-response/SKILL.md) | 5 | CODE_FIX | Applied |
 | T1874 | Test that HTTP response headers do not expose any sensitive information | [skills/web-frontend-security/T1874-test-that-http-response-headers-do-not-expose-any/SKILL.md](./skills/web-frontend-security/T1874-test-that-http-response-headers-do-not-expose-any/SKILL.md) | 5 | CODE_FIX | Applied |
-### logging-audit (16)
+| T257 | Secure cross origin resource sharing (CORS) | [skills/web-frontend-security/T257-secure-cross-origin-resource-sharing-cors/SKILL.md](./skills/web-frontend-security/T257-secure-cross-origin-resource-sharing-cors/SKILL.md) | 8 | CODE_FIX | Applied |
+| T29 | Use anti-Cross-Site Request Forgery (CSRF) tokens | [skills/web-frontend-security/T29-use-anti-cross-site-request-forgery-csrf-tokens/SKILL.md](./skills/web-frontend-security/T29-use-anti-cross-site-request-forgery-csrf-tokens/SKILL.md) | 7 | CODE_FIX | Applied |
+| T295 | Avoid storing unencrypted confidential data without access control mechanisms | [skills/web-frontend-security/T295-avoid-storing-unencrypted-confidential-data-withou/SKILL.md](./skills/web-frontend-security/T295-avoid-storing-unencrypted-confidential-data-withou/SKILL.md) | 7 | CODE_FIX | Applied |
+| T66 | Prevent web pages from being loaded inside iFrame | [skills/web-frontend-security/T66-prevent-web-pages-from-being-loaded-inside-iframe/SKILL.md](./skills/web-frontend-security/T66-prevent-web-pages-from-being-loaded-inside-iframe/SKILL.md) | 7 | CODE_FIX | Applied |
+### logging-audit (17)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -249,7 +277,8 @@ Rules for agents implementing this repository:
 | T438 | Verify that log reduction and report generation capabilities exist | [skills/logging-audit/T438-verify-that-log-reduction-and-report-generation-ca/SKILL.md](./skills/logging-audit/T438-verify-that-log-reduction-and-report-generation-ca/SKILL.md) | 4 | CODE_FIX | Applied |
 | T485 | Sign audit records for non-repudiation | [skills/logging-audit/T485-sign-audit-records-for-non-repudiation/SKILL.md](./skills/logging-audit/T485-sign-audit-records-for-non-repudiation/SKILL.md) | 5 | CODE_FIX | Applied |
 | T486 | Verify that audit records are signed to enable non-repudiation | [skills/logging-audit/T486-verify-that-audit-records-are-signed-to-enable-non/SKILL.md](./skills/logging-audit/T486-verify-that-audit-records-are-signed-to-enable-non/SKILL.md) | 5 | CODE_FIX | Applied |
-### file-handling (14)
+| T349 | Protect audit information and logs against unauthorized access | [skills/logging-audit/T349-protect-audit-information-and-logs-against-unautho/SKILL.md](./skills/logging-audit/T349-protect-audit-information-and-logs-against-unautho/SKILL.md) | 7 | CODE_FIX | Applied |
+### file-handling (15)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -267,6 +296,7 @@ Rules for agents implementing this repository:
 | T572 | Check for symlinks before opening files | [skills/file-handling/T572-check-for-symlinks-before-opening-files/SKILL.md](./skills/file-handling/T572-check-for-symlinks-before-opening-files/SKILL.md) | 6 | CODE_FIX | Applied |
 | T595 | Test that your application checks for symlinks before opening files | [skills/file-handling/T595-test-that-your-application-checks-for-symlinks-bef/SKILL.md](./skills/file-handling/T595-test-that-your-application-checks-for-symlinks-bef/SKILL.md) | 6 | CODE_FIX | Applied |
 | T2167 | Secure file storage | [skills/file-handling/T2167-secure-file-storage/SKILL.md](./skills/file-handling/T2167-secure-file-storage/SKILL.md) | 6 | CODE_FIX | Applied |
+| T214 | Protect confidential files on operating system or server | [skills/file-handling/T214-protect-confidential-files-on-operating-system-or/SKILL.md](./skills/file-handling/T214-protect-confidential-files-on-operating-system-or/SKILL.md) | 9 | CODE_FIX | Applied |
 ### clinical-safety-resilience (11)
 
 | ID | Title | Skill File | Priority | Category | Status |
@@ -282,7 +312,7 @@ Rules for agents implementing this repository:
 | T633 | Mitigate Deadlock and Recursion in Services | [skills/clinical-safety-resilience/T633-mitigate-deadlock-and-recursion-in-services/SKILL.md](./skills/clinical-safety-resilience/T633-mitigate-deadlock-and-recursion-in-services/SKILL.md) | 4 | CODE_FIX | Applied |
 | T2280 | Verify that a priority scheme for application services and operations is designed | [skills/clinical-safety-resilience/T2280-verify-that-a-priority-scheme-for-application-serv/SKILL.md](./skills/clinical-safety-resilience/T2280-verify-that-a-priority-scheme-for-application-serv/SKILL.md) | 8 | CODE_FIX | Applied |
 | T4602 | Utilize watchdog timers to ensure devices can quickly detect whether a system is unresponsive | [skills/clinical-safety-resilience/T4602-utilize-watchdog-timers-to-ensure-devices-can-quic/SKILL.md](./skills/clinical-safety-resilience/T4602-utilize-watchdog-timers-to-ensure-devices-can-quic/SKILL.md) | 7 | CODE_FIX | Applied |
-### privacy (16)
+### privacy (23)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -302,7 +332,14 @@ Rules for agents implementing this repository:
 | T745 | Verify if pseudonymized personal information is protected | [skills/privacy/T745-verify-if-pseudonymized-personal-information-is-pr/SKILL.md](./skills/privacy/T745-verify-if-pseudonymized-personal-information-is-pr/SKILL.md) | 8 | CODE_FIX | Applied |
 | T751 | Provide users with a notification of personal information processing | [skills/privacy/T751-provide-users-with-a-notification-of-personal-info/SKILL.md](./skills/privacy/T751-provide-users-with-a-notification-of-personal-info/SKILL.md) | 5 | CODE_FIX | Applied |
 | T752 | Verify if users are notified about processing their personal information | [skills/privacy/T752-verify-if-users-are-notified-about-processing-thei/SKILL.md](./skills/privacy/T752-verify-if-users-are-notified-about-processing-thei/SKILL.md) | 5 | CODE_FIX | Applied |
-### secure-config-supply-chain (19)
+| T178 | Obtain consent from users prior to collecting personal information | [skills/privacy/T178-obtain-consent-from-users-prior-to-collecting-pers/SKILL.md](./skills/privacy/T178-obtain-consent-from-users-prior-to-collecting-pers/SKILL.md) | 10 | CODE_FIX | Applied |
+| T377 | De-identify protected health information before using it for a secondary purpose | [skills/privacy/T377-de-identify-protected-health-information-before-us/SKILL.md](./skills/privacy/T377-de-identify-protected-health-information-before-us/SKILL.md) | 7 | CODE_FIX | Applied |
+| T544 | Anonymize (de-identify) identifying information before using it for a secondary purpose | [skills/privacy/T544-anonymize-de-identify-identifying-information-befo/SKILL.md](./skills/privacy/T544-anonymize-de-identify-identifying-information-befo/SKILL.md) | 8 | CODE_FIX | Applied |
+| T604 | Implement a consent withdrawal mechanism | [skills/privacy/T604-implement-a-consent-withdrawal-mechanism/SKILL.md](./skills/privacy/T604-implement-a-consent-withdrawal-mechanism/SKILL.md) | 10 | CODE_FIX | Applied |
+| T742 | Implement technical measures to ensure the accuracy of personal information | [skills/privacy/T742-implement-technical-measures-to-ensure-the-accurac/SKILL.md](./skills/privacy/T742-implement-technical-measures-to-ensure-the-accurac/SKILL.md) | 7 | CODE_FIX | Applied |
+| T744 | Protect pseudonymized personal information | [skills/privacy/T744-protect-pseudonymized-personal-information/SKILL.md](./skills/privacy/T744-protect-pseudonymized-personal-information/SKILL.md) | 8 | CODE_FIX | Applied |
+| T754 | Enable the restriction of processing personal information of an individual for a specific purpose | [skills/privacy/T754-enable-the-restriction-of-processing-personal-info/SKILL.md](./skills/privacy/T754-enable-the-restriction-of-processing-personal-info/SKILL.md) | 8 | CODE_FIX | Applied |
+### secure-config-supply-chain (30)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -325,7 +362,18 @@ Rules for agents implementing this repository:
 | T2361 | Design a secure application architecture for the cloud environment (Cloud) (2/2) | [skills/secure-config-supply-chain/T2361-design-a-secure-application-architecture-for-the-c/SKILL.md](./skills/secure-config-supply-chain/T2361-design-a-secure-application-architecture-for-the-c/SKILL.md) | 10 | CODE_FIX | Applied |
 | T2477 | Test the re-deployment routines | [skills/secure-config-supply-chain/T2477-test-the-re-deployment-routines/SKILL.md](./skills/secure-config-supply-chain/T2477-test-the-re-deployment-routines/SKILL.md) | 6 | CODE_FIX | Applied |
 | T2478 | Manage re-deployment routines | [skills/secure-config-supply-chain/T2478-manage-re-deployment-routines/SKILL.md](./skills/secure-config-supply-chain/T2478-manage-re-deployment-routines/SKILL.md) | 6 | CODE_FIX | Applied |
-### database (6)
+| T1386 | Regulate the use of electronic messaging | [skills/secure-config-supply-chain/T1386-regulate-the-use-of-electronic-messaging/SKILL.md](./skills/secure-config-supply-chain/T1386-regulate-the-use-of-electronic-messaging/SKILL.md) | 8 | CODE_FIX | Applied |
+| T151 | Use cryptographically secure random numbers | [skills/secure-config-supply-chain/T151-use-cryptographically-secure-random-numbers/SKILL.md](./skills/secure-config-supply-chain/T151-use-cryptographically-secure-random-numbers/SKILL.md) | 7 | CODE_FIX | Applied |
+| T156 | Validate certificate and its chain of trust properly | [skills/secure-config-supply-chain/T156-validate-certificate-and-its-chain-of-trust-proper/SKILL.md](./skills/secure-config-supply-chain/T156-validate-certificate-and-its-chain-of-trust-proper/SKILL.md) | 7 | CODE_FIX | Applied |
+| T186 | Use recommended settings and the latest patches for third party libraries and software | [skills/secure-config-supply-chain/T186-use-recommended-settings-and-the-latest-patches-fo/SKILL.md](./skills/secure-config-supply-chain/T186-use-recommended-settings-and-the-latest-patches-fo/SKILL.md) | 10 | CODE_FIX | Applied |
+| T21 | Ensure all data in transit is encrypted using a secure TLS channel | [skills/secure-config-supply-chain/T21-ensure-all-data-in-transit-is-encrypted-using-a-se/SKILL.md](./skills/secure-config-supply-chain/T21-ensure-all-data-in-transit-is-encrypted-using-a-se/SKILL.md) | 8 | CODE_FIX | Applied |
+| T2157 | Secure email and messaging in web applications | [skills/secure-config-supply-chain/T2157-secure-email-and-messaging-in-web-applications/SKILL.md](./skills/secure-config-supply-chain/T2157-secure-email-and-messaging-in-web-applications/SKILL.md) | 7 | CODE_FIX | Applied |
+| T279 | Avoid dynamically loading any code without proper security considerations | [skills/secure-config-supply-chain/T279-avoid-dynamically-loading-any-code-without-proper/SKILL.md](./skills/secure-config-supply-chain/T279-avoid-dynamically-loading-any-code-without-proper/SKILL.md) | 8 | CODE_FIX | Applied |
+| T49 | Disable and remove debug capabilities and code/data, and prepare application for release | [skills/secure-config-supply-chain/T49-disable-and-remove-debug-capabilities-and-code-dat/SKILL.md](./skills/secure-config-supply-chain/T49-disable-and-remove-debug-capabilities-and-code-dat/SKILL.md) | 7 | CODE_FIX | Applied |
+| T59 | Use standard libraries for cryptography | [skills/secure-config-supply-chain/T59-use-standard-libraries-for-cryptography/SKILL.md](./skills/secure-config-supply-chain/T59-use-standard-libraries-for-cryptography/SKILL.md) | 8 | CODE_FIX | Applied |
+| T60 | Use correct and approved cryptographic algorithms, parameters, and key lengths | [skills/secure-config-supply-chain/T60-use-correct-and-approved-cryptographic-algorithms/SKILL.md](./skills/secure-config-supply-chain/T60-use-correct-and-approved-cryptographic-algorithms/SKILL.md) | 8 | CODE_FIX | Applied |
+| T76 | Do not hardcode passwords | [skills/secure-config-supply-chain/T76-do-not-hardcode-passwords/SKILL.md](./skills/secure-config-supply-chain/T76-do-not-hardcode-passwords/SKILL.md) | 10 | CODE_FIX | Applied |
+### database (8)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -335,7 +383,9 @@ Rules for agents implementing this repository:
 | T2617 | Create dedicated database user accounts with minimum privileges (PostgreSQL) | [skills/database/T2617-create-dedicated-database-user-accounts-with-minim/SKILL.md](./skills/database/T2617-create-dedicated-database-user-accounts-with-minim/SKILL.md) | 8 | CODE_FIX | Applied |
 | T2619 | Ensure that row-level security is correctly configured (PostgreSQL) | [skills/database/T2619-ensure-that-row-level-security-is-correctly-config/SKILL.md](./skills/database/T2619-ensure-that-row-level-security-is-correctly-config/SKILL.md) | 7 | CODE_FIX | Applied |
 | T2664 | Create dedicated database user accounts with minimum privileges (Database Server) | [skills/database/T2664-create-dedicated-database-user-accounts-with-minim/SKILL.md](./skills/database/T2664-create-dedicated-database-user-accounts-with-minim/SKILL.md) | 8 | CODE_FIX | Applied |
-### cloud-infrastructure (55)
+| T19 | Restrict Application's Access to Database | [skills/database/T19-restrict-application-s-access-to-database/SKILL.md](./skills/database/T19-restrict-application-s-access-to-database/SKILL.md) | 8 | CODE_FIX | Applied |
+| T2598 | Implement query-level access control | [skills/database/T2598-implement-query-level-access-control/SKILL.md](./skills/database/T2598-implement-query-level-access-control/SKILL.md) | 8 | CODE_FIX | Applied |
+### cloud-infrastructure (59)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -394,7 +444,11 @@ Rules for agents implementing this repository:
 | T4597 | Break and inspect SSL/TLS sessions | [skills/cloud-infrastructure/T4597-break-and-inspect-ssl-tls-sessions/SKILL.md](./skills/cloud-infrastructure/T4597-break-and-inspect-ssl-tls-sessions/SKILL.md) | 6 | INFRA | Documented |
 | T4600 | Establish Out-of-Band Communications Channel | [skills/cloud-infrastructure/T4600-establish-out-of-band-communications-channel/SKILL.md](./skills/cloud-infrastructure/T4600-establish-out-of-band-communications-channel/SKILL.md) | 10 | INFRA | Documented |
 | T4601 | Prioritize static network configuration | [skills/cloud-infrastructure/T4601-prioritize-static-network-configuration/SKILL.md](./skills/cloud-infrastructure/T4601-prioritize-static-network-configuration/SKILL.md) | 8 | INFRA | Documented |
-### database-infrastructure (27)
+| T2170 | Ensure that personal information processed by the application meets data localization requirements (NON-CODE) | [skills/cloud-infrastructure/T2170-ensure-that-personal-information-processed-by-the/SKILL.md](./skills/cloud-infrastructure/T2170-ensure-that-personal-information-processed-by-the/SKILL.md) | 9 | INFRA | Applied |
+| T374 | Offload HTTP request handling to dedicated modules (NON-CODE) | [skills/cloud-infrastructure/T374-offload-http-request-handling-to-dedicated-modules/SKILL.md](./skills/cloud-infrastructure/T374-offload-http-request-handling-to-dedicated-modules/SKILL.md) | 7 | INFRA | Applied |
+| T4593 | Monitor the behaviour on endpoint (NON-CODE) | [skills/cloud-infrastructure/T4593-monitor-the-behaviour-on-endpoint/SKILL.md](./skills/cloud-infrastructure/T4593-monitor-the-behaviour-on-endpoint/SKILL.md) | 7 | INFRA | Documented |
+| T4595 | Protect processes with high privileges (NON-CODE) | [skills/cloud-infrastructure/T4595-protect-processes-with-high-privileges/SKILL.md](./skills/cloud-infrastructure/T4595-protect-processes-with-high-privileges/SKILL.md) | 8 | INFRA | Documented |
+### database-infrastructure (28)
 
 | ID | Title | Skill File | Priority | Category | Status |
 |----|-------|-----------|----------|----------|--------|
@@ -425,29 +479,30 @@ Rules for agents implementing this repository:
 | T2667 | Schedule regular database backups to protect availability (Database Server) | [skills/database-infrastructure/T2667-schedule-regular-database-backups-to-protect-avail/SKILL.md](./skills/database-infrastructure/T2667-schedule-regular-database-backups-to-protect-avail/SKILL.md) | 6 | INFRA | Documented |
 | T2668 | Monitor database activity and enable audit logging | [skills/database-infrastructure/T2668-monitor-database-activity-and-enable-audit-logging/SKILL.md](./skills/database-infrastructure/T2668-monitor-database-activity-and-enable-audit-logging/SKILL.md) | 5 | INFRA | Documented |
 | T3990 | Schedule regular backups | [skills/database-infrastructure/T3990-schedule-regular-backups/SKILL.md](./skills/database-infrastructure/T3990-schedule-regular-backups/SKILL.md) | 6 | INFRA | Documented |
+| T2602 | Log typical database and server activities and related metadata (NON-CODE) | [skills/database-infrastructure/T2602-log-typical-database-and-server-activities-and-rel/SKILL.md](./skills/database-infrastructure/T2602-log-typical-database-and-server-activities-and-rel/SKILL.md) | 8 | INFRA | Applied |
 ## Completion Requirements
 
-**ALL 316 file-tracked countermeasures must be addressed. No exceptions.** CODE_FIX items are complete only when the secure pattern is implemented and its success criteria are met. INFRA items are complete when the recommended Vercel/Supabase/IT action is carried out and recorded, plus any repo-side config the recipe names.
+**ALL 371 file-tracked countermeasures must be addressed. No exceptions.** CODE_FIX items are complete only when the secure pattern is implemented and its success criteria are met. INFRA items are complete when the recommended Vercel/Supabase/IT action is carried out and recorded, plus any repo-side config the recipe names.
 
 ## Progress Tracking
 
 | Domain | Total | Implemented | Documented | Remaining |
 |--------|-------|-------------|------------|-----------|
-| authentication | 38 | 38 | 0 | 0 |
-| session-management | 23 | 23 | 0 | 0 |
-| authorization | 22 | 22 | 0 | 0 |
-| api-security | 8 | 8 | 0 | 0 |
-| input-validation | 30 | 30 | 0 | 0 |
-| web-frontend-security | 31 | 31 | 0 | 0 |
-| logging-audit | 16 | 16 | 0 | 0 |
-| file-handling | 14 | 14 | 0 | 0 |
+| authentication | 42 | 42 | 0 | 0 |
+| session-management | 26 | 26 | 0 | 0 |
+| authorization | 26 | 26 | 0 | 0 |
+| api-security | 14 | 14 | 0 | 0 |
+| input-validation | 37 | 37 | 0 | 0 |
+| web-frontend-security | 35 | 35 | 0 | 0 |
+| logging-audit | 17 | 17 | 0 | 0 |
+| file-handling | 15 | 15 | 0 | 0 |
 | clinical-safety-resilience | 11 | 11 | 0 | 0 |
-| privacy | 16 | 16 | 0 | 0 |
-| secure-config-supply-chain | 19 | 19 | 0 | 0 |
-| database | 6 | 6 | 0 | 0 |
-| cloud-infrastructure | 55 | 0 | 55 | 0 |
-| database-infrastructure | 27 | 0 | 27 | 0 |
-| **TOTAL** | **316** | **234** | **82** | **0** |
+| privacy | 23 | 23 | 0 | 0 |
+| secure-config-supply-chain | 30 | 30 | 0 | 0 |
+| database | 8 | 8 | 0 | 0 |
+| cloud-infrastructure | 59 | 2 | 57 | 0 |
+| database-infrastructure | 28 | 1 | 27 | 0 |
+| **TOTAL** | **371** | **287** | **84** | **0** |
 
 **Remaining MUST reach 0 before completion.** INFRA rows are pre-documented (external actions), but each should still be re-evaluated for repo-side config during implementation.
 
@@ -455,5 +510,5 @@ Rules for agents implementing this repository:
 
 - [x] All CODE_FIX countermeasures have secure implementations
 - [x] All non-code items documented with justification
-- [x] Total addressed = 316
+- [x] Total addressed = 371
 <!-- SDE-SECURITY-HARDENING-END -->

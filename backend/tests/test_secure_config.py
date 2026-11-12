@@ -645,3 +645,219 @@ def test_t2599_well_formed_dsn_accepted_and_read_only_by_config_and_db(bare_env,
                      if "database_url" in p.read_text(encoding="utf-8").lower())
     # passwords.py inspects the DSN structure for problems, cli.py only reads ADMIN_DATABASE_URL for operators.
     assert set(readers) <= {"config.py", "db.py", "passwords.py", "cli.py"}, readers
+
+
+# =========================================================================== T151 random numbers
+def test_t151_math_random_never_used_outside_frontend_tests():
+    offenders = [p.name for p, src in fe_sources() if re.search(r"Math\.random\s*\(", src)]
+    assert offenders == []
+
+
+def test_t151_generated_security_values_are_unique_and_high_entropy():
+    from app.services import device_auth, files
+
+    secrets_ = {device_auth.new_device_secret()[0] for _ in range(1000)}
+    assert len(secrets_) == 1000 and all(len(s) >= 32 for s in secrets_)          # token_urlsafe(24) = 192 bits
+    pid = uuid.uuid4()
+    paths = {files.new_object_path(pid, "png") for _ in range(1000)}
+    assert len(paths) == 1000
+    for p in list(paths)[:50]:
+        assert uuid.UUID(p.rsplit("/", 1)[1].split(".")[0]).version == 4          # 122 random bits
+
+
+# =========================================================================== T156 / T21 certificate validation & TLS
+def test_t156_tls_failures_fail_closed_with_a_security_event(caplog):
+    import ssl
+
+    import httpx
+
+    from app.core.errors import install_error_handlers, is_tls_verification_failure
+
+    app = FastAPI()
+    install_error_handlers(app)
+
+    @app.get("/x")
+    async def x():
+        try:
+            raise ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] self-signed certificate")
+        except ssl.SSLError as exc:
+            raise httpx.ConnectError("TLS handshake failed") from exc
+
+    with caplog.at_level("ERROR", logger="acme.security"), TestClient(app, raise_server_exceptions=False) as c:
+        r = c.get("/x")
+    assert r.status_code == 503 and r.json()["code"] == "dependency_unavailable" and r.headers["retry-after"]
+    assert "certificate" not in r.text.lower() and "ssl" not in r.text.lower()
+    assert any(rec.getMessage() == "tls_verification_failed" for rec in caplog.records)
+    assert not is_tls_verification_failure(httpx.ConnectError("connection refused"))
+
+
+def test_t21_hsts_on_api_responses_and_plain_http_refused_in_production(prod_client):
+    r = prod_client.get("/v1/health")
+    assert r.headers["strict-transport-security"].startswith("max-age=63072000")
+    assert prod_client.get("/v1/health", headers={"X-Forwarded-Proto": "http"}).status_code == 400
+    assert prod_client.get("/v1/health", headers={"X-Forwarded-Proto": "https"}).status_code == 200
+
+
+def test_t21_frontend_origins_are_tls_only():
+    data = json.loads((FRONTEND / "vercel.json").read_text(encoding="utf-8"))
+    csp = data["headers"][0]["headers"][0]["value"]
+    assert "upgrade-insecure-requests" in csp
+    connect = next(d for d in csp.split(";") if d.strip().startswith("connect-src")).split()[1:]
+    assert all(o == "'self'" or o.startswith(("https://", "wss://")) for o in connect)
+    hsts = {h["key"]: h["value"] for h in data["headers"][0]["headers"]}["Strict-Transport-Security"]
+    assert "max-age=63072000" in hsts
+    supa = (FRONTEND / "src" / "lib" / "supabase.ts").read_text(encoding="utf-8")
+    assert "VITE_SUPABASE_URL must use https" in supa
+
+
+# =========================================================================== T186 secure settings / patches
+def test_t186_runtime_and_package_manager_are_pinned_and_installs_are_frozen():
+    pkg = json.loads((FRONTEND / "package.json").read_text(encoding="utf-8"))
+    assert re.fullmatch(r"pnpm@\d+\.\d+\.\d+", pkg["packageManager"]) and pkg["engines"]["node"]
+    assert "--frozen-lockfile" in CI and "pip-audit" in CI and "pnpm audit" in CI
+    reqs = (BACKEND / "requirements.txt").read_text(encoding="utf-8")
+    assert re.search(r"^pyjwt\[crypto\]==", reqs, re.M | re.I) and re.search(r"^cryptography==", reqs, re.M)
+    toml = (ROOT / "supabase" / "config.toml").read_text(encoding="utf-8")
+    assert "enable_signup = false" in toml and "secure_password_change = true" in toml
+
+
+# =========================================================================== T279 dynamic code loading
+def test_t279_scenario_names_are_an_enum_not_code(client, identities):
+    uid = add_identity(identities, "admin")
+    h = {"Authorization": f"Bearer {make_token(uid, aal='aal2', auth_time=int(time.time()))}"}
+    for scenario in ("__import__('os')", "unknown_scenario"):
+        r = client.post("/v1/simulation/scenario", json={"scenario": scenario}, headers=h)
+        assert r.status_code == 422, (scenario, r.status_code)
+
+
+# =========================================================================== T59 / T60 cryptography
+def test_t59_frontend_has_no_third_party_crypto_library():
+    pkg = json.loads((FRONTEND / "package.json").read_text(encoding="utf-8"))
+    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+    assert not [d for d in deps if re.search(r"crypto|forge|sjcl|tweetnacl|bcrypt|jose|jsencrypt", d, re.I)]
+
+
+def test_t60_purpose_keys_are_separate_from_each_other_and_the_jwt_secret():
+    from app.services import integrity
+
+    audit = integrity._derive(b"audit-signing-key-v1", 64)
+    config = integrity._derive(b"config-integrity-key-v1", 32)
+    jwt_secret = get_settings().supabase_jwt_secret.get_secret_value().encode()
+    assert audit[:32] != config and jwt_secret not in (audit, config) and len(config) * 8 >= 256
+
+
+# =========================================================================== T76 no hardcoded passwords
+def test_t76_frontend_env_example_holds_only_public_placeholders():
+    example = (FRONTEND / ".env.example").read_text(encoding="utf-8")
+    keys = re.findall(r"^([A-Z_]+)=", example, re.M)
+    assert set(keys) == {"VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY", "VITE_API_BASE_URL"}
+    assert all("<" in line for line in example.splitlines() if "=" in line and not line.startswith("#"))
+    toml = (ROOT / "supabase" / "config.toml").read_text(encoding="utf-8")
+    smtp = toml.split("[auth.email.smtp]", 1)[1].split("\n[", 1)[0]
+    assert re.search(r'^pass = "env\(SUPABASE_SMTP_PASS\)"$', smtp, re.M)  # never an inline credential
+    assert "gitleaks" in CI
+
+
+# =========================================================================== T49 release preparation
+def test_t49_release_bundles_carry_no_debug_code_tests_or_source_maps():
+    vite = (FRONTEND / "vite.config.ts").read_text(encoding="utf-8")
+    assert "sourcemap: false" in vite
+    assert not [p.name for p, src in fe_sources() if re.search(r"\bconsole\.(log|debug|trace)\(|\bdebugger\b", src)]
+    ignore = (BACKEND / ".vercelignore").read_text(encoding="utf-8").split()
+    for entry in ("tests/", ".pytest_cache/", "__pycache__/", "*.log", ".env"):
+        assert entry in ignore, entry
+    dist = FRONTEND / "dist"
+    if dist.exists():
+        assert not list(dist.rglob("*.map"))  # (console calls in third-party bundles are library code, not ours)
+
+
+# =========================================================================== T1386 / T2157 e-mail and messaging
+TEMPLATES = ROOT / "supabase" / "templates"
+TOML = (ROOT / "supabase" / "config.toml").read_text(encoding="utf-8")
+
+
+def test_t1386_every_template_has_the_anti_phishing_statement_and_no_secrets_or_patient_data():
+    files_ = sorted(TEMPLATES.glob("*.html"))
+    assert {p.name for p in files_} >= {"invite.html", "recovery.html", "email_change.html", "password_changed.html"}
+    for p in files_:
+        body = p.read_text(encoding="utf-8")
+        assert "never asks for your password" in body, p.name
+        assert "contains no patient information" in body and "intended only for" in body, p.name
+        placeholders = set(re.findall(r"\{\{\s*\.(\w+)", body))
+        assert placeholders <= {"ConfirmationURL", "Email", "OldEmail", "Token", "SiteURL"}, (p.name, placeholders)
+        assert not re.search(r"password\s*[:=]|patient name|\bMRN\b|PT-\d{4}", body, re.I), p.name
+        assert f'content_path = "./supabase/templates/{p.name}"' in TOML, p.name
+
+
+def test_t1386_admin_alerts_only_carry_allow_listed_identifiers(monkeypatch):
+    import asyncio as _asyncio
+
+    from app.core import audit
+
+    stored: list[str] = []
+
+    class Conn:
+        async def execute(self, sql, params=()):
+            stored.append(params[2])
+
+    @asynccontextmanager
+    async def tx(principal, read_only=False):
+        yield Conn()
+
+    monkeypatch.setattr("app.db.transaction", tx)
+    audit._last_alert.clear()
+    _asyncio.run(audit.notify_admins("test_alert", {"patient_id": "p-1", "display_name": "Alex Morgan", "mrn": "123",
+                                                   "heart_rate": 180, "note": "free text"}))
+    assert json.loads(stored[0]) == {"patient_id": "p-1"}
+
+
+def test_t2157_smtp_uses_env_credentials_and_tls_port_and_limits_mail_volume():
+    smtp = TOML.split("[auth.email.smtp]", 1)[1].split("\n[", 1)[0]
+    for key in ("host", "user", "pass", "admin_email"):
+        assert re.search(rf'^{key} = "env\(SUPABASE_SMTP_[A-Z_]+\)"$', smtp, re.M), key
+    assert re.search(r"^port = (587|465)$", smtp, re.M)
+    assert re.search(r"^email_sent = \d+$", TOML, re.M) and 'max_frequency = "60s"' in TOML
+    assert "supabase --yes config push" in CI and "SUPABASE_SMTP_PASS: ${{ secrets.SUPABASE_SMTP_PASS }}" in CI
+    doc = (DOCS / "deployment.md").read_text(encoding="utf-8")
+    assert "SPF" in doc and "DKIM" in doc and "DMARC" in doc
+
+
+@pytest.mark.parametrize("email", ["a@b.com\r\nBcc: x@evil.test", "a@b.com\nCc: x@evil.test", "a@b.com%0d%0aBcc:x@evil.test"])
+def test_t2157_header_injection_in_invite_address_is_rejected(client, identities, email):
+    uid = add_identity(identities, "admin")
+    h = {"Authorization": f"Bearer {make_token(uid, aal='aal2', auth_time=int(time.time()))}"}
+    r = client.post("/v1/staff", json={"email": email, "full_name": "Eve Test", "role": "nurse"}, headers=h)
+    assert r.status_code == 422
+
+
+# =========================================================================== INFRA re-check: repo-side config
+def test_t2170_api_functions_pinned_to_a_documented_region():
+    cfg = json.loads((BACKEND / "vercel.json").read_text(encoding="utf-8"))
+    assert cfg["regions"] == ["gru1"]
+    doc = (DOCS / "deployment.md").read_text(encoding="utf-8")
+    assert "## Data location (T2170)" in doc and "sa-east-1" in doc
+
+
+def test_t374_per_request_resources_are_bounded_and_edge_controls_documented():
+    fn = json.loads((BACKEND / "vercel.json").read_text(encoding="utf-8"))["functions"]["api/index.py"]
+    assert fn["maxDuration"] <= 30 and fn["memory"] <= 1024
+    doc = (DOCS / "deployment.md").read_text(encoding="utf-8")
+    assert "## Request handling offloaded to the platform (T374)" in doc and "Vercel Firewall" in doc
+
+
+def test_t2602_pgaudit_logs_writes_ddl_and_role_changes_without_phi():
+    sql = (ROOT / "supabase" / "migrations" / "0014_database_audit_logging.sql").read_text(encoding="utf-8")
+    assert "create extension if not exists pgaudit" in sql
+    assert "'write, ddl, role'" in sql and "pgaudit.log_parameter = %L', r, 'off'" in sql
+    assert "'read'" not in sql.split("--")[-1]
+    for role in ("acme_api", "acme_api_rw", "acme_reset_owner"):
+        assert f"'{role}'" in sql
+    assert '"application_name": "acme-clinical-api"' in (BACKEND / "app" / "db.py").read_text(encoding="utf-8")
+    assert "## Database server logging (T2602)" in (DOCS / "logging-audit.md").read_text(encoding="utf-8")
+
+
+def test_t4593_t4595_operator_checklists_exist():
+    doc = (DOCS / "deployment.md").read_text(encoding="utf-8")
+    section = doc.split("## Endpoint behaviour monitoring and privileged processes (T4593, T4595)", 1)[1]
+    for item in ("log drains", "Baselines", "EDR", "SOC 2", "superuser"):
+        assert item in section, item

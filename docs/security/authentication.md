@@ -60,9 +60,28 @@ short or low-entropy system credentials and superuser DSNs (the `.env.example` p
   verified with a throw-away, non-persistent Supabase client (so the signed-in session and its MFA
   level are untouched) before `updateUser({ password, current_password })`. `secure_password_change`
   adds reauthentication for sessions older than 24 h. All sessions are signed out afterwards.
-* **Recovery** (`/forgot-password`): always shows the same neutral message; Supabase e-mails a
-  single-use link valid for one hour (`otp_expiry = 3600`). No temporary passwords, no security
-  questions, no personal image/phrase (N/A by design). Redirects are restricted to an exact allow-list.
+* **Recovery** (`/forgot-password`): always shows the same neutral message and sets no cookie or storage
+  that differs by input (also when Supabase throws); Supabase e-mails a single-use link valid for
+  **15 minutes** (`otp_expiry = 900`), at most one per address per minute (`max_frequency`) and 10 per hour
+  per project (`email_sent`). No temporary passwords, no security questions (the PRD flow uses e-mail links;
+  the link plus lockout and rate limits replace steps 3-4 of the SD Elements sequence), no personal
+  image/phrase. Redirects are restricted to an exact allow-list. After the new password is set every
+  session on every device is signed out (`signOut({ scope: "global" })`, stronger than an opt-in), and the
+  **password changed** notification e-mail (`supabase/templates/password_changed.html`, never containing the
+  password) is sent by Supabase Auth.
+
+### Anti-automation on recovery (T2) - open decision
+
+SD Elements T2 asks for a CAPTCHA (with an accessible alternative) on the reset form. Supabase Auth only
+supports Turnstile or hCaptcha, both of which load a third-party script and iframe from the provider's origin;
+the SPA's CSP (`script-src 'self'`, `frame-src 'none'`) and T279 (no third-party CDN scripts) forbid that, and
+enabling `[auth.captcha]` would also require a token on every sign-in and password re-verification. CAPTCHA is
+therefore **not** enabled. Compensating controls: Supabase per-IP limits (`token_verifications`,
+`sign_in_sign_ups`), per-address `max_frequency = 60s`, the project-wide `email_sent = 10/h`, the per-account
+lockout hook, uniform responses and Vercel Firewall rate limits (deployment.md). To close the gap the security
+owner must either accept this residual risk in writing or approve the CSP exception for
+`https://challenges.cloudflare.com` (script-src + frame-src) and the Turnstile widget on Login, ForgotPassword,
+StepUpDialog and the re-authentication helper.
 
 ## Sign-in, errors and throttling
 
@@ -127,8 +146,14 @@ and shows them after login.
 ## Monitor authenticity
 
 Each monitor has a per-device pairing code; only its SHA-256 is stored. `public.verify_monitor_secret()`
-compares hashes, refuses retired monitors and locks verification for 15 minutes after 5 failures
-(shared across all API instances). Codes are issued by `provision-monitor-secrets` and never logged or
+compares hashes, refuses retired monitors and throttles failures in the database (shared across all
+API instances, T70): 5 failures lock verification for 15 minutes and every further failure after a lock
+doubles it (30 min, 1 h, 2 h ...) up to **24 hours** (`0012_device_auth_lockout.sql`). The response is the
+same for a wrong code, an unknown monitor and a locked monitor. Each failure is audited
+(`monitor.auth_failed`), a lockout is audited (`monitor.auth_locked`) and raises a `device_auth_lockout`
+admin alert; administrators lift it with `DELETE /v1/monitors/{id}/auth-lockout` (settings:manage,
+audited `monitor.auth_unlocked`). Pairing attempts are also rate-limited per client (10/min) and per source
+IP (20/min) in `backend/app/core/middleware.py`. Codes are issued by `provision-monitor-secrets` and never logged or
 returned by the API. Future real monitors must present manufacturer-backed identity (device
 certificate) at registration.
 
@@ -140,3 +165,9 @@ certificate) at registration.
 - [ ] Hooks: Password Verification Attempt → `public.hook_password_verification_attempt`
 - [ ] Rate limits as in `supabase/config.toml`; URL configuration: site URL + exact redirect URLs
 - [ ] Anonymous sign-ins OFF; no installation/bootstrap accounts left with default credentials
+- [ ] Email: OTP / link expiry 900 s; templates from `supabase/templates/` (invite, recovery, e-mail change,
+      reauthentication) and the security notifications "password changed" and "e-mail changed" enabled
+      (the `deploy` job runs `supabase config push`; verify in Authentication → Emails)
+- [ ] SMTP: custom provider configured with STARTTLS on 587 (see deployment.md "Transactional e-mail")
+- [ ] Manual check per release: a recovery link used twice, or after 15 minutes, is rejected; the
+      "password changed" e-mail arrives and contains no password

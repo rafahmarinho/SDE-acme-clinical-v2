@@ -24,6 +24,21 @@ _EXACT_ORIGIN = re.compile(r"https?://[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-
 _DSN_QUERY_PARAMS = frozenset({"sslmode", "sslrootcert", "connect_timeout", "application_name"})
 
 
+def audit_signing_key_problems(pem: str) -> list[str]:
+    """AUDIT_SIGNING_KEY must be an unencrypted PEM EC private key on P-521 (T60: approved curve and size)."""
+    from cryptography.exceptions import UnsupportedAlgorithm
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    try:
+        key = serialization.load_pem_private_key(pem.replace("\\n", "\n").encode(), password=None)
+    except (ValueError, TypeError, UnsupportedAlgorithm):
+        return ["AUDIT_SIGNING_KEY is not a PEM private key"]
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or not isinstance(key.curve, ec.SECP521R1):
+        return ["AUDIT_SIGNING_KEY must be an EC P-521 private key"]
+    return []
+
+
 class Settings(BaseSettings):
     # `.env` is git-ignored and meant for local development only; Vercel injects real environment variables.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -133,6 +148,8 @@ class Settings(BaseSettings):
         if self.config_integrity_key is not None and self.config_integrity_key.get_secret_value():
             problems += system_secret_problems("CONFIG_INTEGRITY_KEY", self.config_integrity_key.get_secret_value(),
                                                min_length=32)
+        if self.audit_signing_key is not None and self.audit_signing_key.get_secret_value():
+            problems += audit_signing_key_problems(self.audit_signing_key.get_secret_value())
         if problems:
             raise ValueError("insecure production configuration: " + "; ".join(problems))
         return self

@@ -60,4 +60,4 @@ async def grant(body: ConsentIn, principal: Principal = Depends(require(Perm.pro
 - [ ] Vitest (`frontend/src/screens/Profile.test.tsx`): all consent toggles render unchecked and Accept/Decline buttons are visible.
 - [ ] Pytest: RLS prevents one user reading another user's consent grants.
 
-**Status:** Pending
+**Status:** Applied

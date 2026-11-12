@@ -58,10 +58,22 @@ def report_kind(name: str) -> ReportKind:
 # ---------------------------------------------------------------------------
 # Safe temporary files (T157, T572)
 # ---------------------------------------------------------------------------
+def check_private_dir(st: os.stat_result, *, posix: bool = os.name == "posix") -> None:
+    """Refuse a report workspace that is not a real directory owned by this process with mode 0700 (T214).
+
+    A directory pre-created by another local user (or left world-writable) could be used to read or swap the
+    confidential CSV files. Windows has no POSIX modes/uids: there only the type check applies."""
+    if not stat.S_ISDIR(st.st_mode):
+        raise PermissionError("report temp root is not a directory")
+    if posix and (st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) & 0o077):
+        raise PermissionError("report temp root is not private to this process")
+
+
 def _ensure_root() -> Path:
     TMP_ROOT.mkdir(mode=0o700, exist_ok=True)
     if TMP_ROOT.is_symlink() or not TMP_ROOT.is_dir():
         raise PermissionError("report temp root is not a private directory")
+    check_private_dir(os.lstat(TMP_ROOT))
     return TMP_ROOT
 
 
@@ -156,7 +168,10 @@ AUDIT_COLUMNS = ("id", "occurred_at", "actor_id", "actor_role", "action", "entit
 async def audit_rows(conn: AsyncConnection, start: datetime, end: datetime, actions: Sequence[str] = (),
                      actor_id: str | None = None, outcome: str | None = None, limit: int = MAX_AUDIT_ROWS) -> list[dict]:
     """Audit rows in the window. Fetches ``limit + 1`` and refuses (422 ``result_too_large``) instead of silently
-    truncating, so a report never presents a partial period as complete (T2600)."""
+    truncating, so a report never presents a partial period as complete (T2600).
+
+    Staff whose data is restricted for ``staff_activity_report`` (T754) are left out of this secondary-use
+    report; their events stay in public.events, in the hash chain and in the integrity verification."""
     limit = min(limit, MAX_AUDIT_ROWS)
     rows = await fetch_all(conn, """
         select id, occurred_at, actor_id::text as actor_id, actor_role::text as actor_role, action, entity_type,
@@ -166,6 +181,7 @@ async def audit_rows(conn: AsyncConnection, start: datetime, end: datetime, acti
           and (cardinality(%(actions)s::text[]) = 0 or action = any(%(actions)s::text[]))
           and (%(actor)s::uuid is null or actor_id = %(actor)s::uuid)
           and (%(outcome)s::text is null or outcome = %(outcome)s)
+          and public.processing_allowed('staff', actor_id, 'staff_activity_report')
         order by id
         limit %(limit)s""", {"start": start, "end": end, "actions": list(actions), "actor": actor_id,
                              "outcome": outcome, "limit": limit + 1})
@@ -197,12 +213,18 @@ async def audit_summary(conn: AsyncConnection, start: datetime, end: datetime, a
                         actor_id: str | None = None, outcome: str | None = None) -> dict:
     rows = await audit_rows(conn, start, end, actions, actor_id, outcome)
     chain = await fetch_one(conn, "select public.verify_event_chain() as broken_at")
-    return summarize_audit(rows, start, end, chain["broken_at"] if chain else None)
+    restricted = await fetch_one(conn, """select count(distinct subject_id)::int as n from public.processing_restrictions
+        where subject_type = 'staff' and activity = 'staff_activity_report' and lifted_at is null""")
+    summary = summarize_audit(rows, start, end, chain["broken_at"] if chain else None)
+    summary["restricted_subjects_excluded"] = restricted["n"] if restricted else 0
+    return summary
 
 
 async def ward_activity(conn: AsyncConnection, ward_id: str | None, start: datetime, end: datetime) -> dict:
     params = {"ward": ward_id, "start": start, "end": end}
-    scope = "(%(ward)s::uuid is null or p.ward_id = %(ward)s::uuid)"
+    # Statistics are a secondary use: patients restricted for "statistics" (T754) are excluded.
+    scope = ("(%(ward)s::uuid is null or p.ward_id = %(ward)s::uuid)"
+             " and public.processing_allowed('patient', p.id, 'statistics')")
     counts = await fetch_all(conn, f"""
         select a.type::text as type, count(*)::int as n
         from public.alarms a left join public.patients p on p.id = a.patient_id
@@ -226,3 +248,72 @@ async def ward_activity(conn: AsyncConnection, ward_id: str | None, start: datet
         "readings_count": readings["n"] if readings else 0,
         "generated_at": datetime.now(UTC),
     }
+
+
+# ---------------------------------------------------------------------------
+# De-identified extract for secondary use (research, threshold tuning, training datasets) (T377 / T544)
+# ---------------------------------------------------------------------------
+# Safe Harbor identifiers that exist in this system and are never copied into an extract: names, dates more
+# precise than an offset, record/device numbers, bed/ward-level location below the ward, free text, files.
+PHI_DROP = frozenset({"patient_id", "pseudonym", "display_name", "birth_year", "bed_id", "bed_label", "monitor_id",
+                      "monitor_serial", "recorded_at", "admitted_at", "discharged_at", "body", "ack_note",
+                      "object_path", "original_name", "ecg"})
+EXTRACT_COLUMNS = ("subject", "ward_code", "offset_seconds", "heart_rate", "spo2", "resp_rate", "bp_systolic",
+                   "bp_diastolic", "quality")
+MAX_EXTRACT_ROWS = 20_000
+
+
+def deidentify_readings(rows: Sequence[dict[str, Any]], *, key: bytes, min_subjects: int) -> list[dict[str, Any]]:
+    """Turn identified vital-sign rows into a de-identified extract.
+
+    * the patient id is replaced by a keyed pseudonym (HMAC-SHA256 with a random key per extract, discarded
+      afterwards), so the same patient gets different subject codes in two extracts and codes cannot be linked
+      back to patients or to the PT-nnnn pseudonyms;
+    * timestamps become offsets in seconds from the subject's first reading in the extract;
+    * every column in PHI_DROP is removed; only EXTRACT_COLUMNS survive;
+    * wards with fewer than ``min_subjects`` distinct patients are dropped entirely (small-cell suppression).
+    """
+    import hashlib
+    import hmac
+
+    per_ward: dict[str, set[str]] = {}
+    for r in rows:
+        per_ward.setdefault(r["ward_code"], set()).add(str(r["patient_id"]))
+    allowed = {w for w, subjects in per_ward.items() if len(subjects) >= min_subjects}
+    first_seen: dict[str, datetime] = {}
+    for r in rows:
+        pid = str(r["patient_id"])
+        if r["ward_code"] in allowed and (pid not in first_seen or r["recorded_at"] < first_seen[pid]):
+            first_seen[pid] = r["recorded_at"]
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        if r["ward_code"] not in allowed:
+            continue
+        pid = str(r["patient_id"])
+        subject = "S-" + hmac.new(key, pid.encode(), hashlib.sha256).hexdigest()[:16]
+        record = {k: v for k, v in r.items() if k in EXTRACT_COLUMNS and k not in PHI_DROP}
+        record["subject"] = subject
+        record["offset_seconds"] = int((r["recorded_at"] - first_seen[pid]).total_seconds())
+        out.append({c: record.get(c) for c in EXTRACT_COLUMNS})
+    return out
+
+
+async def research_extract(conn: AsyncConnection, start: datetime, end: datetime, *, min_subjects: int) -> list[dict]:
+    """Vital signs in the window, de-identified. Patients restricted for ``research_extract`` (T754) are skipped.
+    Observation text, ECG traces and Storage attachments are never selected."""
+    import secrets
+
+    rows = await fetch_all(conn, """
+        select r.patient_id, w.code as ward_code, r.recorded_at, r.heart_rate, r.spo2, r.resp_rate,
+               r.bp_systolic, r.bp_diastolic, r.quality::text as quality
+        from public.readings r
+        join public.patients p on p.id = r.patient_id
+        join public.wards w on w.id = p.ward_id
+        where r.recorded_at >= %(start)s and r.recorded_at < %(end)s
+          and public.processing_allowed('patient', p.id, 'research_extract')
+        order by r.recorded_at
+        limit %(limit)s""", {"start": start, "end": end, "limit": MAX_EXTRACT_ROWS + 1})
+    if len(rows) > MAX_EXTRACT_ROWS:
+        raise DomainError("The extract period contains too many readings. Choose a shorter period.", 422,
+                          "result_too_large")
+    return deidentify_readings(rows, key=secrets.token_bytes(32), min_subjects=min_subjects)

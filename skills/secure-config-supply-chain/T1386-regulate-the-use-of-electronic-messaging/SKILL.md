@@ -47,4 +47,4 @@ async def notify_admins(kind: str, details: dict | None = None) -> None:
 - [ ] Pytest: `notify_admins` drops any detail key outside the allow-list (patient names, MRNs, vitals).
 - [ ] `supabase/config.toml` references the custom templates and an SMTP block without inline credentials.
 
-**Status:** Pending
+**Status:** Applied

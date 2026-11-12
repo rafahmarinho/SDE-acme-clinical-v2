@@ -46,4 +46,4 @@ def deidentify_reading(row: Mapping[str, Any], study_key: bytes) -> dict[str, An
 - [ ] Pytest: the extract endpoint is admin-only (403 for other roles) and writes an audit event with row counts only.
 - [ ] Pytest: no extract contains Storage object paths or observation text.
 
-**Status:** Pending
+**Status:** Applied

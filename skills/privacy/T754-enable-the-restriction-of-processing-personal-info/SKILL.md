@@ -56,4 +56,4 @@ rows = await fetch_all(conn, """select ... from public.events e
 - [ ] Pytest: only administrators can create/lift restrictions (403 for nurse, physician, biomedical technician), and both actions are audited.
 - [ ] Pytest: clinical endpoints (patient detail, alarms) are unaffected by restrictions on secondary activities.
 
-**Status:** Pending
+**Status:** Applied

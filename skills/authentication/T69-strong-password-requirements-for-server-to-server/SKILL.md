@@ -58,4 +58,4 @@ def _production_secret_strength(self) -> "Settings":
 - [ ] Pytest: production `Settings` with a 20-character JWT secret raises a validation error; a 48-character random value passes.
 - [ ] Device secrets issued by the CLI are unique per monitor and at least 32 characters.
 
-**Status:** Pending
+**Status:** Applied

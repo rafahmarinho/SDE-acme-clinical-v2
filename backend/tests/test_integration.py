@@ -376,7 +376,7 @@ def test_p7_ward_report_suppresses_small_counts(client, identities, monkeypatch,
 
 # --------------------------------------------------------------------------- L2 / N4 / I3 configuration
 BASE = dict(supabase_url="https://x.supabase.co", supabase_anon_key="anon-key-value",
-            supabase_service_role_key="service-role-key-0123456789", supabase_jwt_secret="jwt-secret-0123456789-abcdefghijKLMN")
+            supabase_service_role_key="service-role-key-0123456789", supabase_jwt_secret="jwt-secret-7f3k9q2mX8vB1nR6tY4wZ0pL")
 
 
 def test_l2_optional_key_material_is_secret():

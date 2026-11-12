@@ -243,3 +243,74 @@ async def approve_role_change(role_request_id: UUID, request: Request, principal
         row = await fetch_one(conn, _SELECT + " where sp.user_id = %s group by sp.user_id", (target,))
     return StaffOut(**row)
 
+
+
+# ---------------------------------------------------------------------------
+# Restriction of processing for secondary purposes (T754, public.processing_restrictions, 0013): the data stays
+# stored, but staff activity reports, statistics and research extracts skip the person. Clinical care and the
+# legally required audit trail cannot be restricted. Administrators only; both actions are audited.
+# ---------------------------------------------------------------------------
+RestrictableActivity = Literal["staff_activity_report", "statistics", "research_extract"]
+RestrictionBasis = Literal["objection", "accuracy_contested", "unlawful_processing", "legal_claims"]
+
+
+class RestrictionIn(Strict):
+    activity: RestrictableActivity
+    basis: RestrictionBasis
+
+
+class RestrictionOut(BaseModel):
+    id: UUID
+    activity: RestrictableActivity
+    basis: RestrictionBasis
+    created_by: UUID
+    created_at: datetime
+    lifted_by: UUID | None = None
+    lifted_at: datetime | None = None
+
+
+_RESTRICTION_COLUMNS = "id, activity, basis, created_by, created_at, lifted_by, lifted_at"
+
+
+@router.get("/{user_id}/processing-restrictions", response_model=Page[RestrictionOut])
+async def list_restrictions(user_id: UUID, principal: Admin,
+                            limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = MAX_PAGE_SIZE,
+                            offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0) -> Page[RestrictionOut]:
+    async with transaction(principal) as conn:
+        rows = await fetch_all(conn, f"""select {_RESTRICTION_COLUMNS} from public.processing_restrictions
+               where subject_type = 'staff' and subject_id = %s order by created_at desc limit %s offset %s""",
+                               (str(user_id), limit + 1, offset))
+    return Page[RestrictionOut](items=[RestrictionOut(**r) for r in rows[:limit]],
+                                next_offset=offset + limit if len(rows) > limit else None)
+
+
+@router.post("/{user_id}/processing-restrictions", response_model=RestrictionOut, status_code=201)
+async def restrict_processing(user_id: UUID, body: RestrictionIn, request: Request, principal: Admin) -> RestrictionOut:
+    async with transaction(principal) as conn:
+        if await fetch_one(conn, "select 1 from public.staff_profiles where user_id = %s", (str(user_id),)) is None:
+            raise HTTPException(404, "Staff member not found.")
+        row = await fetch_one(conn, f"""select {_RESTRICTION_COLUMNS} from public.processing_restrictions
+               where subject_type = 'staff' and subject_id = %s and activity = %s and lifted_at is null""",
+                              (str(user_id), body.activity))
+        if row is None:
+            row = await fetch_one(conn, f"""insert into public.processing_restrictions
+                   (subject_type, subject_id, activity, basis, created_by) values ('staff', %s, %s, %s, %s)
+                   returning {_RESTRICTION_COLUMNS}""", (str(user_id), body.activity, body.basis, str(principal.user_id)))
+            await record_event(principal, "privacy.processing_restricted", "staff_profile", str(user_id),
+                               details={"activity": body.activity, "basis": body.basis}, conn=conn,
+                               request_id=request.state.request_id)
+    return RestrictionOut(**row)
+
+
+@router.delete("/{user_id}/processing-restrictions", status_code=204)
+async def lift_restriction(user_id: UUID, activity: Annotated[RestrictableActivity, Query()], request: Request,
+                           principal: Admin) -> Response:
+    async with transaction(principal) as conn:
+        row = await fetch_one(conn, """update public.processing_restrictions set lifted_at = now(), lifted_by = %s
+               where subject_type = 'staff' and subject_id = %s and activity = %s and lifted_at is null returning id""",
+                              (str(principal.user_id), str(user_id), activity))
+        if row is None:
+            raise HTTPException(404, "No active restriction for this activity.")
+        await record_event(principal, "privacy.restriction_lifted", "staff_profile", str(user_id),
+                           details={"activity": activity}, conn=conn, request_id=request.state.request_id)
+    return Response(status_code=204)

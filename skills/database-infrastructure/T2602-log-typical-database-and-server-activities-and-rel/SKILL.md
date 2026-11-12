@@ -19,4 +19,4 @@ description: Log ACME Clinical's Supabase PostgreSQL server lifecycle, transacti
 
 **Recommended Action:** Database/platform owner: (1) enable pgaudit via a `supabase/migrations/` migration for the application roles (write, DDL, role changes; avoid `read` to keep PHI volume out of logs); (2) confirm Postgres logs in Supabase Logs Explorer show restarts, connections, errors and statements with timestamp, role, database and application name (set `application_name=acme-api` in `DATABASE_URL`); (3) configure a Supabase log drain to the organization SIEM with retention matching `docs/security/logging-audit.md`; (4) keep the organization audit log enabled for Dashboard configuration changes; (5) document accepted gaps (e.g. pause events on managed instances) in `docs/security/logging-audit.md`.
 
-**Status:** Documented
+**Status:** Applied

@@ -13,6 +13,7 @@
 
 import hashlib
 import logging
+import time
 from typing import Annotated
 from urllib.parse import quote
 from uuid import UUID
@@ -46,6 +47,30 @@ def _storage_headers() -> dict[str, str]:
 
 def _storage_client(timeout: float) -> httpx.AsyncClient:
     return supabase_client(timeout)
+
+
+BUCKET_CHECK_SECONDS = 300
+_bucket_verified_at: float | None = None
+
+
+async def ensure_bucket_private(client: httpx.AsyncClient) -> None:
+    """Fail closed if the attachments bucket is (or became) public (T214).
+
+    Checked against the Storage API before any file is stored or a signed URL is issued (cached for
+    BUCKET_CHECK_SECONDS per instance). A public or unverifiable bucket alerts administrators and refuses the
+    request with 503 instead of exposing confidential files."""
+    global _bucket_verified_at
+    now = time.monotonic()
+    if _bucket_verified_at is not None and now - _bucket_verified_at < BUCKET_CHECK_SECONDS:
+        return
+    resp = await client.get(f"/storage/v1/bucket/{BUCKET}", headers=_storage_headers())
+    body = resp.json() if resp.status_code == 200 else {}
+    if not isinstance(body, dict) or body.get("public") is not False:
+        _bucket_verified_at = None
+        sec_event("storage_bucket_not_private", outcome="failure", level=logging.ERROR, status=resp.status_code)
+        await notify_admins("storage_bucket_not_private", {"status": resp.status_code})
+        raise DomainError("File storage is temporarily unavailable.", 503, code="storage_unavailable")
+    _bucket_verified_at = now
 
 
 @router.get("/patients/{patient_id}", response_model=Page[AttachmentOut])
@@ -92,6 +117,7 @@ async def upload_file(patient_id: UUID, request: Request, principal: Annotated[P
             raise HTTPException(404, "Patient not found.")
         object_path = file_service.new_object_path(patient_id, ext)
         async with _storage_client(20) as client:
+            await ensure_bucket_private(client)
             resp = await client.post(f"/storage/v1/object/{BUCKET}/{object_path}", content=data,
                                      headers={**_storage_headers(), "Content-Type": mime, "x-upsert": "false"})
             if resp.status_code >= 400:
@@ -128,6 +154,7 @@ async def signed_url(attachment_id: UUID, request: Request,
             raise HTTPException(404, "File not found.")
         object_path = file_service.safe_object_path(row["object_path"])
         async with _storage_client(10) as client:
+            await ensure_bucket_private(client)
             resp = await client.post(f"/storage/v1/object/sign/{BUCKET}/{object_path}",
                                      json={"expiresIn": SIGNED_URL_SECONDS}, headers=_storage_headers())
         if resp.status_code >= 400:
