@@ -2,15 +2,15 @@
 # Audit with: pip-audit -r requirements.txt --strict   (clean on 2026-11-12)
 # Component register and license review: docs/security/secure-config.md
 # fastapi is held below 0.137 (router internals changed; the route-inventory authorization guard depends on them).
-fastapi==0.136.3
-starlette==1.3.1
-pydantic==2.11.4
-pydantic-settings==2.9.1
-email-validator==2.2.0
-python-multipart==0.0.31
-uvicorn[standard]==0.34.2
-psycopg[binary]==3.2.9
-psycopg-pool==3.2.6
+fastapi==0.162.4
+starlette==1.10.0
+pydantic==2.14.3
+pydantic-settings==2.16.2
+email-validator==2.3.0
+python-multipart==0.0.33
+uvicorn[standard]==0.54.0
+psycopg[binary]==3.3.8
+psycopg-pool==3.3.3
 pyjwt[crypto]==2.15.1
 cryptography==50.0.2
 httpx==0.28.1
